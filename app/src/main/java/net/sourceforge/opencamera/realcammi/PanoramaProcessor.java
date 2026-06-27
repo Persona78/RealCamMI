@@ -588,8 +588,10 @@ public class PanoramaProcessor {
             OutputStream outputStream = new FileOutputStream(file);
             if( name.toLowerCase().endsWith(".png") )
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
-            else
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+            else {
+                int jpeg_quality = main_activity.getApplicationInterface().getImageQualityPref();
+                bitmap.compress(Bitmap.CompressFormat.JPEG, jpeg_quality, outputStream);
+            }
             outputStream.close();
             main_activity.getStorageUtils().broadcastFile(file, true, false, true, false, null);
         }

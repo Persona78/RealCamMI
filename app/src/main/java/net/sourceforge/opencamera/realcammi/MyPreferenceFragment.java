@@ -1011,13 +1011,11 @@ public class MyPreferenceFragment extends PreferenceFragmentCompat implements On
         if( preference instanceof net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference ) {
             net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog dialog =
                 net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog.newInstance(preference.getKey());
-            dialog.setTargetFragment(this, 0);
             dialog.show(getParentFragmentManager(), "ArraySeekBarPreferenceDialog");
         }
         else if( preference instanceof net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference ) {
             net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog dialog =
                 net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog.newInstance(preference.getKey());
-            dialog.setTargetFragment(this, 0);
             dialog.show(getParentFragmentManager(), "MyEditTextPreferenceDialog");
         }
         else {
