@@ -72,7 +72,7 @@ public class MainActivityTest extends ActivityInstrumentationTestCase2<net.sourc
 
     public MainActivityTest() {
         //noinspection deprecation
-        super("net.sourceforge.opencamera", MainActivity.class);
+        super("net.sourceforge.opencamera.realcammi", MainActivity.class);
     }
 
     private static Intent createDefaultIntent() {
