@@ -196,6 +196,13 @@ RealCamMI is licensed under the **GNU General Public License v3.0 or later**, th
 
 ![Download app](docs/images/download.png)
 
+## Disclaimer:
+
+- Use at Your Own Risk!
+- No Professional Advice!
+- Results Not Typical!
+- No Affiliate Disclaimer!
+
 ## Photo Sample
 
 ![Photo Sample](docs/images/img(1).jpg)
