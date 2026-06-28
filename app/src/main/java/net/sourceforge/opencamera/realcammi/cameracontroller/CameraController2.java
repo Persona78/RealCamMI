@@ -132,8 +132,8 @@ public class CameraController2 extends CameraController {
     // Our curves (jtvideo=17, jtlog=17, jtlog2=18 points) need at least 18 points.
     // The original upstream value of 128 was too high for many devices including Garnet,
     // which caused the video log options to be hidden unnecessarily.
-    final static int tonemap_log_max_curve_points_c = 18;
-    // though matching your target hardware's native limit (typically 64 or 128) is the ideal approach
+    final static int tonemap_log_max_curve_points_c = 17; // Set to match RealCam MI curves (jtvideo=17, jtlog=17, jtlog2=18 points)
+    // typically is set to 64 or 128.
 
     // [REALCAMMI FORK] The following three tonemap curve arrays (jtvideo, jtlog, jtlog2)
     // are additions specific to this fork and do not exist in upstream Open Camera.
@@ -144,7 +144,7 @@ public class CameraController2 extends CameraController {
     private final static float [] jtvideo_values_base = new float[] {
             0.00f, 0.00f,    // pure black
             0.01f, 0.018f,   // near-black
-            0.02f, 0.028f,   // deep shadows
+            0.02f, 0.030f,   // deep shadows
             0.04f, 0.075f,   // dark shadows
             0.09f, 0.082f,   // shadow-midtone transition
             0.13f, 0.20f,    // lower midtones
@@ -375,7 +375,11 @@ public class CameraController2 extends CameraController {
      *  different to the preview.
      */
 
-    final static long max_preview_exposure_time_c = 1000000000L/3; // 1000000000L/5;
+    final static long max_preview_exposure_time_c = 1000000000L/10; // 1000000000L/5; default Open Camera
+    // Shutter speed: The camera sensor remains open for a maximum of 1/10 of a second (100 ms) per frame.
+    // Guaranteed fluidity: In very dark rooms, the preview rate drops to a minimum of 10 FPS (frames per second),
+    // preventing the screen from freezing completely. Light gain: The camera captures three times
+    // more light than it would if limited to 30 FPS.
 
     private void resetCaptureResultInfo() {
         capture_result_is_ae_scanning = false;
@@ -527,7 +531,11 @@ public class CameraController2 extends CameraController {
     }
 
     private static float RGBtoGain(float value) {
-        final float max_gain_c = 10.0f;
+        final float max_gain_c = 8.5f; // RealCamMI 10.0f default value, set 8.5f to try to get Less Digital Noise (Grain):
+        // In extremely dark areas of the image (where maximum gain is activated), the camera will amplify the
+        // signal slightly less. This helps reduce visual noise (those colored dots or "grain" that appear in dark areas).
+        // Slightly Darker Shadows: Since the gain has been limited to 8.5f instead of 10.0f, absolute blacks or very
+        // deep shadows will not be lightened as much. The image may take on a slightly higher-contrast look in these dark zones.
         if( value < 1.0e-5f ) {
             return max_gain_c;
         }
