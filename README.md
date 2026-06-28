@@ -1,7 +1,7 @@
 
-< p align="center">
-<alt="RealCamMI logo" img src="docs/images/RealCamMI.png" width="400">
-</ p>
+<p align="center">
+    <img width="400" img src="docs/images/RealCamMI.png" alt="RealCamMI logo">
+</p>
 
 ## RealCamMI — Fork Documentation
 
