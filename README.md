@@ -361,12 +361,12 @@ RealCamMI remains licensed under the **GNU General Public License v3.0 or later*
 ![Photo Sample](docs/images/img(3).jpg)
 ![Photo Sample](docs/images/img(4).jpg)
 ![Photo Sample](docs/images/img(5).jpg)
-![Photo Sample](docs/images/img(4).jpg)
-![Photo Sample](docs/images/img(5).jpg)
 ![Photo Sample](docs/images/img(6).jpg)
 ![Photo Sample](docs/images/img(7).jpg)
 ![Photo Sample](docs/images/img(8).jpg)
 ![Photo Sample](docs/images/img(9).jpg)
+![Photo Sample](docs/images/img(10).jpg)
+![Photo Sample](docs/images/img(11).jpg)
 
 .
 
