@@ -1,6 +1,9 @@
-<img src="docs/images/RealCamMI.png" width="400"/>
 
-# RealCamMI — Fork Documentation
+< p align="center">
+<img src="docs/images/RealCamMI.png" width="400"/>
+</ p>
+
+## RealCamMI — Fork Documentation
 
 **Fork of:** Open Camera (commit `0dd4cb`, master branch)  
 **Upstream:** https://sourceforge.net/p/opencamera/code/ci/master/tree/  
