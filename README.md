@@ -1,3 +1,5 @@
+<img src="docs/images/RealCamMI.png" width="400"/>
+
 # RealCamMI — Fork Documentation
 
 **Fork of:** Open Camera (commit `0dd4cb`, master branch)  
@@ -144,7 +146,7 @@ All legacy Android APIs migrated to AndroidX:
 ### `CameraController2.java`
 
 **Tonemap curves (new in fork):**
-- `jtvideo_values_base` — calibrated JTVideo tonemap curve, tuned via pixel-level comparison against the Xiaomi Garnet stock camera app. Adjusts shadow rendering, midtone transitions, and highlight rolloff.
+- `jtvideo_values_base` — calibrated JTVideo tonemap curve, tuned via pixel-level Sample against the Xiaomi Garnet stock camera app. Adjusts shadow rendering, midtone transitions, and highlight rolloff.
 - `jtlog_values_base` — JTLog logarithmic profile.
 - `jtlog2_values_base` — JTLog2 alternative logarithmic profile.
 - `TonemapProfile` enum extended with `TONEMAPPROFILE_JTVIDEO`, `TONEMAPPROFILE_JTLOG`, `TONEMAPPROFILE_JTLOG2`.
@@ -274,7 +276,7 @@ All changes specific to the RealCamMI fork are marked with the tag `[REALCAMMI F
 
 ---
 
-## Upstream Comparison Summary
+## Upstream Sample Summary
 
 | Metric | Value |
 |---|---|
@@ -315,7 +317,7 @@ Added tuned tonemap curve profiles (`jtvideo`, `jtlog`, `jtlog2`) designed for m
 - Smooth, natural midtone transitions with a touch of extra contrast for perceived sharpness/definition
 - Controlled highlight roll-off to avoid blown-out whites
 
-These curves were iteratively tuned and tested against real side-by-side comparisons with each device's stock camera app, across bright midday light, golden hour, and indoor low light.
+These curves were iteratively tuned and tested against real side-by-side Samples with each device's stock camera app, across bright midday light, golden hour, and indoor low light.
 
 Also added `TONEMAPPROFILE_SLOG3`, an implementation of Sony's S-Log3 logarithmic profile for users who want maximum dynamic range for color grading in post-production (DaVinci Resolve, CapCut, etc.). Note: footage shot with this profile will look intentionally flat and desaturated straight out of the camera — that's expected, and it requires a LUT or manual grade afterward.
 
@@ -335,7 +337,7 @@ Forces `NOISE_REDUCTION_MODE_OFF` on Ulefone Armor devices, where the default no
 
 ## Why these changes exist
 
-Every change here was driven by a real, observed problem on real hardware (Ulefone Armor 25T, a Xiaomi device, and a Redmi Note 13 Pro 5G), verified with side-by-side photo/video comparisons against each device's stock camera app, rather than applied speculatively. Where a problem turned out to be a hardware/driver-level limitation rather than something fixable in app code (see the video color-shift note below), no workaround was forced in — it's left as a known limitation instead.
+Every change here was driven by a real, observed problem on real hardware (Ulefone Armor 25T, a Xiaomi device, and a Redmi Note 13 Pro 5G), verified with side-by-side photo/video Samples against each device's stock camera app, rather than applied speculatively. Where a problem turned out to be a hardware/driver-level limitation rather than something fixable in app code (see the video color-shift note below), no workaround was forced in — it's left as a known limitation instead.
 
 ## Known limitations
 
@@ -352,4 +354,19 @@ RealCamMI remains licensed under the **GNU General Public License v3.0 or later*
 - Open Camera's other contributors (see `_docs/credits.html`).
 - Google Material Design icons, Apache License 2.0.
 
+## Photo Sample
+
+![Photo Sample](docs/images/img(1).jpg)
+![Photo Sample](docs/images/img(2).jpg)
+![Photo Sample](docs/images/img(3).jpg)
+![Photo Sample](docs/images/img(4).jpg)
+![Photo Sample](docs/images/img(5).jpg)
+![Photo Sample](docs/images/img(4).jpg)
+![Photo Sample](docs/images/img(5).jpg)
+![Photo Sample](docs/images/img(6).jpg)
+![Photo Sample](docs/images/img(7).jpg)
+![Photo Sample](docs/images/img(8).jpg)
+![Photo Sample](docs/images/img(9).jpg)
+
 .
+
