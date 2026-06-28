@@ -357,6 +357,10 @@ RealCamMI remains licensed under the **GNU General Public License v3.0 or later*
 - Open Camera's other contributors (see `_docs/credits.html`).
 - Google Material Design icons, Apache License 2.0.
 
+## Download
+
+![Download app](docs/images/download.png)
+
 ## Photo Sample
 
 ![Photo Sample](docs/images/img(1).jpg)
