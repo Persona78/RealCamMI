@@ -144,7 +144,7 @@ public class CameraController2 extends CameraController {
     private final static float [] jtvideo_values_base = new float[] {
             0.00f, 0.00f,    // pure black
             0.01f, 0.018f,   // near-black
-            0.02f, 0.030f,   // deep shadows
+            0.02f, 0.028f,   // deep shadows
             0.04f, 0.075f,   // dark shadows
             0.09f, 0.082f,   // shadow-midtone transition
             0.13f, 0.20f,    // lower midtones
@@ -155,7 +155,7 @@ public class CameraController2 extends CameraController {
             0.51f, 0.66f,    // lower highlights
             0.60f, 0.68f,    // highlights
             0.67f, 0.74f,    // upper highlights
-            0.72f, 0.78f,    // bright highlights
+            0.72f, 0.80f,    // bright highlights
             0.86f, 0.90f,    // near-white
             0.90f, 0.92f,   // almost white
             1.00f, 1.00f     // pure white stays white
