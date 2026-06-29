@@ -146,7 +146,7 @@ public class CameraController2 extends CameraController {
             0.01f, 0.018f,   // near-black
             0.02f, 0.028f,   // deep shadows
             0.04f, 0.075f,   // dark shadows
-            0.09f, 0.082f,   // shadow-midtone transition
+            0.09f, 0.078f,   // shadow-midtone transition
             0.13f, 0.20f,    // lower midtones
             0.18f, 0.27f,    // midtones
             0.23f, 0.29f,    // mid-midtones

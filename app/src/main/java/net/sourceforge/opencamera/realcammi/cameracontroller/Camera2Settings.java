@@ -190,7 +190,7 @@ public class Camera2Settings {
         // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
         builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
         // Corrects chromatic aberrations (colored fringes) with the correct constant.
-        //builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+        builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
         // Forces Tonemap to rebalance the gamma channel in the shadows.
         builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
@@ -400,8 +400,8 @@ public class Camera2Settings {
             // need to set COLOR_CORRECTION_TRANSFORM on some devices (e.g. Pixel 6 Pro) as they don't have it set by default
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
-                            11, 10,   0, 10,  -1, 10, // Red 1.0
-                            0, 10,  11, 10,  -1, 10, // Green 1.0
+                            10, 10,   0, 10,  -0, 10, // Red 1.0
+                            1, 10,  10, 10,  -1, 10, // Green 1.0
                             -2, 10,  -3, 10,  15, 10  // Blue 1.0
                     });
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
