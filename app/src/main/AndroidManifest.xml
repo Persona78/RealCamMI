@@ -27,6 +27,11 @@
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.microphone" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.level.full" android:required="true"/>
+    <uses-feature android:name="android.hardware.location" android:required="false"/>
+    <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
+    <uses-feature android:name="android.hardware.location.network" android:required="false"/>
+    <uses-feature android:name="android.hardware.wifi" android:required="false"/>
 
     <application
         android:allowBackup="true"
@@ -35,7 +40,13 @@
         android:name=".OpenCameraApplication"
         android:theme="@style/AppTheme"
         android:largeHeap="true"
+        android:hardwareAccelerated="true"
         >
+		
+		<uses-native-library
+            android:name="libimage.so"
+            android:required="false"/>
+
         <!-- Fix audio fail on Camcorder -->
         <meta-data android:name="android.permission.attribution.AUDIO_RECORD" android:value="audio_record" />
 

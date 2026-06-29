@@ -105,6 +105,11 @@ import androidx.preference.PreferenceFragmentCompat;
 /** The main Activity for RealCamMI.
  */
 public class MainActivity extends AppCompatActivity implements PreferenceFragmentCompat.OnPreferenceStartFragmentCallback {
+
+    static {
+        System.loadLibrary("image"); // testing libimage.so
+    }
+
     private static final String TAG = "MainActivity";
 
     private static int activity_count = 0;
