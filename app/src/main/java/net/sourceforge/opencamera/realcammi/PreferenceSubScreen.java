@@ -30,15 +30,21 @@ public class PreferenceSubScreen extends PreferenceFragmentCompat implements Sha
      * Defined here in the base class so all sub-screens inherit it automatically.
      */
     @Override
-    public void onDisplayPreferenceDialog(androidx.preference.Preference preference) {
-        if( preference instanceof net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference ) {
+    public void onDisplayPreferenceDialog (androidx.preference.Preference preference) {
+        if (preference instanceof net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference) {
             net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog dialog =
-                net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog.newInstance(preference.getKey());
+                    net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog.newInstance(preference.getKey());
+
+            dialog.setTargetFragment(this, 0);
+
             dialog.show(getParentFragmentManager(), "ArraySeekBarPreferenceDialog");
         }
-        else if( preference instanceof net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference ) {
+        else if (preference instanceof net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference) {
             net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog dialog =
-                net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog.newInstance(preference.getKey());
+                    net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog.newInstance(preference.getKey());
+
+            dialog.setTargetFragment(this, 0);
+
             dialog.show(getParentFragmentManager(), "MyEditTextPreferenceDialog");
         }
         else {
