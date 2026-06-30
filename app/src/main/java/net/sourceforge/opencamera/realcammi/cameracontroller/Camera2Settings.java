@@ -33,6 +33,7 @@ public class Camera2Settings {
     // keys that we need to store, to pass to the stillBuilder, but doesn't need to be passed to previewBuilder (should set sensible defaults)
     int rotation;
     Location location;
+    // [REALCAMMI FORK] Default JPEG quality raised to 100 (upstream default is 90)
     byte jpeg_quality = 100;
 
     // keys that we have passed to the previewBuilder, that we need to store to also pass to the stillBuilder (should set sensible defaults, or use a has_ boolean if we don't want to set a default)
@@ -93,6 +94,8 @@ public class Camera2Settings {
 
     private final boolean is_samsung;
     private final boolean is_samsung_s7; // Galaxy S7 or Galaxy S7 Edge
+    // [REALCAMMI FORK] Xiaomi/Ulefone device fingerprinting — not present upstream, used by
+    // setNoiseReductionMode()/setTonemapProfile() etc. to apply device-specific tuning below
     private final boolean is_xiaomi;
     private final boolean is_ulefone;
 
@@ -103,6 +106,8 @@ public class Camera2Settings {
         String build_model = Build.MODEL.toLowerCase(Locale.US);
         this.is_samsung_s7 = build_model.contains("sm-g93");
 
+        // [REALCAMMI FORK] Device model/brand matching for Xiaomi Redmi Note 13 Pro 5G ("garnet")
+        // and Ulefone Armor 25T Pro — drives device-specific NR/Edge/tonemap behavior below
         this.is_ulefone = Build.MANUFACTURER.toLowerCase(Locale.US).contains("ulefone") ||
                 Build.BRAND.toLowerCase(Locale.US).contains("ulefone") ||
                 Build.MODEL.contains("armor 25t pro") ||
@@ -195,6 +200,8 @@ public class Camera2Settings {
         builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
 
+        // [REALCAMMI FORK] Disabled vs upstream (upstream always sets CONTROL_AF_TRIGGER_IDLE here).
+        // TODO: confirm/state the reason this was commented out.
         /*if( !camera_controller.isExtensionSession() ) {
             // Tell the camera to cancel/idle the focus trigger
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
@@ -398,6 +405,9 @@ public class Camera2Settings {
                 Log.d(TAG, "original color_correction_transform: " + builder.get(CaptureRequest.COLOR_CORRECTION_TRANSFORM));
             }
             // need to set COLOR_CORRECTION_TRANSFORM on some devices (e.g. Pixel 6 Pro) as they don't have it set by default
+            // [REALCAMMI FORK] vs upstream's neutral identity matrix (1,1,0,1,0,1 / 0,1,1,1,0,1 / 0,1,0,1,1,1),
+            // this uses fixed-point /10 scaling with slight per-channel offsets — a mild color
+            // correction tweak, not a pure identity passthrough. TODO: confirm intended values.
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
                             10, 10,   0, 10,  -0, 10, // Red 1.0
@@ -640,6 +650,8 @@ public class Camera2Settings {
         return true;
     }
 
+    // [REALCAMMI FORK] New method — not present upstream. Part of the Android 11+ zoom fix,
+    // see has_control_zoom_ratio declaration above for full rationale.
     void setControlZoomRatio(CaptureRequest.Builder builder) {
         if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && has_control_zoom_ratio ) {
             builder.set(CaptureRequest.CONTROL_ZOOM_RATIO, control_zoom_ratio);
@@ -650,6 +662,8 @@ public class Camera2Settings {
         if( camera_controller.isExtensionSession() ) {
             // don't set for extensions
         }
+        // [REALCAMMI FORK] New branch — upstream's setCropRegion() has no CONTROL_ZOOM_RATIO path;
+        // this applies zoom via CONTROL_ZOOM_RATIO + SCALER_CROP_REGION together on Android 11+
         else if( has_control_zoom_ratio ) {
             builder.set(CaptureRequest.CONTROL_ZOOM_RATIO, current_zoom_ratio);
             if( scalar_crop_region != null ) {

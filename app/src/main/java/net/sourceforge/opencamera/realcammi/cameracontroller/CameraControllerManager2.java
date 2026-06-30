@@ -35,6 +35,7 @@ public class CameraControllerManager2 extends CameraControllerManager {
     private final boolean is_ulefone;
 
     //************************************************************************
+    // [REALCAMMI FORK] Samsung fingerprinting, used to disable Edge Mode on Galaxy S series
     private final boolean is_samsung;
     private final boolean is_samsung_galaxy_s;
     private final boolean is_samsung_galaxy_f;
@@ -251,6 +252,7 @@ public class CameraControllerManager2 extends CameraControllerManager {
                     + extractedCameraIds.size() + " -> " + extractedCameraIds);
     }
 
+    // [REALCAMMI FORK] Resolves position index to filtered camera ID string — no upstream equivalent
     public String getCameraIdString(int cameraId) {
         if( cameraId >= 0 && cameraId < extractedCameraIds.size() ) {
             return extractedCameraIds.get(cameraId);
@@ -258,6 +260,7 @@ public class CameraControllerManager2 extends CameraControllerManager {
         return null;
     }
 
+    // [REALCAMMI FORK] Returns count from filtered list; upstream calls getCameraIdList().length directly with its own try/catch
     @Override
     public int getNumberOfCameras() {
         return extractedCameraIds.size();
@@ -340,6 +343,7 @@ public class CameraControllerManager2 extends CameraControllerManager {
         return description.toString();
     }
 
+    // [REALCAMMI FORK] Adds Macro detection (not in upstream); Ultrawide/Telephoto thresholds reused from upstream's getDescription() logic
     private String getLensTypeLabel(Context context, CameraCharacteristics chars, SizeF viewAngle) {
         Float minFocusDist = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
         if( minFocusDist != null && minFocusDist > 25.0f ) {
@@ -355,6 +359,7 @@ public class CameraControllerManager2 extends CameraControllerManager {
         return null;
     }
 
+    // [REALCAMMI FORK] Simplified vs upstream — omits active/pixel array fraction correction and the 55.0f/43.0f default fallback (returns 0,0 instead)
     static SizeF computeViewAngles(CameraCharacteristics characteristics) {
         Rect activeSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         SizeF physicalSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
@@ -371,10 +376,12 @@ public class CameraControllerManager2 extends CameraControllerManager {
         return new SizeF(angleX, angleY);
     }
 
+    // [REALCAMMI FORK] Always allows Camera2, bypasses upstream's LIMITED-hardware-level gate (see isHardwareLevelSupported below)
     public boolean allowCamera2Support(int cameraId) {
         return true;
     }
 
+    // [REALCAMMI FORK] Public (upstream is package-private); rewritten as switch with explicit LEVEL_3 handling, same intent as upstream
     public static boolean isHardwareLevelSupported(CameraCharacteristics characteristics,
                                                    int requiredLevel) {
         Integer currentLevel = characteristics.get(

@@ -89,13 +89,20 @@ public class CameraController2 extends CameraController {
     private boolean app_is_paused = false;
     private final Map<String, CameraFeaturesCache> camera_features_caches; // used to improve performance for subsequent CameraController2 objects; key is the cameraIdS string, value is a CameraFeaturesCache object
     private CameraDevice camera;
+
+    // [REALCAMMI FORK] No longer final (upstream: "private final String cameraIdS;") — needs to be
+    // reassignable for the virtual-ID-to-real-camera redirect logic in the constructor below
     private String cameraIdS;
     private final String cameraIdSPhysical; // if non-null, ID string of underlying physical camera
+
+    // [REALCAMMI FORK] Tracks the physical lens selected via switchLens() — no upstream equivalent
     private String selectedPhysicalCameraId = null;
 
     private final boolean is_samsung;
     private final boolean is_samsung_galaxy_s;
     private final boolean is_samsung_galaxy_f; // Galaxy fold or flip series
+
+    // [REALCAMMI FORK] Device fingerprinting fields, not present upstream — assigned in constructor below
     private final boolean is_xiaomi;
     private final boolean is_ulefone;
     private final boolean block_vendor_extensions; // block specific devices that take ages or cause ANR in CameraExtensionCharacteristics.getSupportedExtensions()
@@ -1415,7 +1422,12 @@ public class CameraController2 extends CameraController {
 
                         CameraController2.this.camera = cam;
 
-                        if (is_ulefone || is_xiaomi || is_samsung && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && extension_characteristics != null) {
+                        // [REALCAMMI FORK] Forces vendor camera-extension HDR session on Ulefone/Xiaomi/Samsung devices
+                        // - not present upstream, which never auto-selects SESSIONTYPE_EXTENSION this way.
+                        // Parentheses around the manufacturer check are required: without them, Java's && precedence
+                        // over || would let Ulefone/Xiaomi bypass the SDK_INT/extension_characteristics null checks,
+                        // causing a NullPointerException on extensions.contains() for those devices on Android < 12.
+                        if ((is_ulefone || is_xiaomi || is_samsung) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && extension_characteristics != null) {
                             List<Integer> extensions = null;
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                                 extensions = extension_characteristics.getSupportedExtensions();
@@ -4563,6 +4575,7 @@ public class CameraController2 extends CameraController {
 
     @Override
     public void setJpegQuality(int quality) {
+        // [REALCAMMI FORK] Changed from upstream's "quality < 0" to "quality <= 0" — rejects 0 as an invalid quality value
         if( quality <= 0 || quality > 100 ) {
             if( MyDebug.LOG )
                 Log.e(TAG, "invalid jpeg quality" + quality);
@@ -4650,6 +4663,8 @@ public class CameraController2 extends CameraController {
             Log.d(TAG, "current_rect bottom: " + current_rect.bottom);*/
             }
             camera_settings.scalar_crop_region = new Rect(left, top, right, bottom);
+        // [REALCAMMI FORK] Tracks the requested zoom ratio for use by the software-crop fallback
+        // in onCaptureCompleted() when the HAL ignores CONTROL_ZOOM_RATIO (see is_xiaomi crop workaround)
             camera_settings.current_zoom_ratio = (float)zoom;
 
         if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ) {
@@ -5998,6 +6013,8 @@ public class CameraController2 extends CameraController {
                 //if( want_video_high_speed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
                 if( MyDebug.LOG )
                     Log.d(TAG, "create high speed capture session");
+                // [REALCAMMI FORK] Added selectedPhysicalCameraId check — ensures output config list is used
+                // when a physical lens was switched via switchLens(), not just for legacy cameraIdSPhysical
                 if( ( cameraIdSPhysical != null || selectedPhysicalCameraId != null || want_jpeg_r ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ) {
                     List<OutputConfiguration> outputs = createOutputConfigurationList(surfaces, preview_surface);
                     SessionConfiguration sessionConfiguration = new SessionConfiguration(SessionConfiguration.SESSION_HIGH_SPEED, outputs, executor, myStateCallback);
@@ -6050,6 +6067,8 @@ public class CameraController2 extends CameraController {
                 if( MyDebug.LOG )
                     Log.d(TAG, "create capture session");
                 try {
+                    // [REALCAMMI FORK] Added selectedPhysicalCameraId check — ensures output config list is used
+                    // when a physical lens was switched via switchLens(), not just for legacy cameraIdSPhysical
                     if( ( cameraIdSPhysical != null || selectedPhysicalCameraId != null || want_jpeg_r ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ) {
                         List<OutputConfiguration> outputs = createOutputConfigurationList(surfaces, preview_surface);
                         /*camera.createCaptureSessionByOutputConfigurations(outputs,
@@ -7381,7 +7400,9 @@ public class CameraController2 extends CameraController {
                     test_fake_flash_photo++;
                 }
 
-                if( !is_ulefone || is_xiaomi && burst_type == BurstType.BURSTTYPE_NORMAL && burst_for_noise_reduction ) {
+                // [REALCAMMI FORK] Device-specific noise-reduction burst tuning for Ulefone and Xiaomi devices
+                // — not present upstream, which has no per-manufacturer branching here
+                if( (is_ulefone || is_xiaomi) && burst_type == BurstType.BURSTTYPE_NORMAL && burst_for_noise_reduction ) {
                     if( MyDebug.LOG )
                         Log.d(TAG, "optimise settings for burst_for_noise_reduction");
                     stillBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST);
