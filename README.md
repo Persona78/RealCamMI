@@ -5,19 +5,29 @@
 
 # RealCamMI
 
-A focused fork of [Open Camera](https://opencamera.org.uk/) by Mark Harman, engineered to fix multi-camera detection, colour/tone rendering, and image quality on Xiaomi and Ulefone devices — with advanced post-processing features powered by OpenCV.
+**RealCamMI is a fork of [Open Camera](https://opencamera.org.uk/) by Mark Harman**, based on upstream revision [`v1.56.2` (commit `0dd4cb`)](https://sourceforge.net/p/opencamera/code/ci/v1.56.2/tree/). It is **not an independent application** — the overwhelming majority of the codebase, architecture, and UI originate from upstream Open Camera. This fork exists to fix multi-camera detection, colour/tone rendering, zoom, and image-quality issues observed on specific Xiaomi and Ulefone devices, and to add an optional OpenCV-based post-processing pipeline on top of the original application.
 
-Licensed under **GPL v3.0 or later** — same as upstream Open Camera.
+Licensed under **GPL v3.0 or later** — same licence as upstream, as required by the GPL for derivative works.
 
 ---
 
-## What is RealCamMI?
+## Fork Notice
 
-**RealCamMI** stands for **Real**istic colour/tone output, originally driven by **M**ulti-**cam**era detection issues on **X**iaomi **(MI)** devices — with fixes that also benefit Ulefone hardware.
+This project is a derivative work, distributed in compliance with the GNU GPLv3:
 
-This fork started from a specific, practical problem: certain devices (Xiaomi/Redmi/POCO, Ulefone Armor series) don't behave correctly with stock Open Camera's camera detection and default colour/tone rendering. Every change here was driven by a real, observed problem on real hardware, verified with side-by-side comparisons against each device's stock camera app.
+- Original project: **Open Camera**, © Mark Harman and contributors — [opencamera.org.uk](https://opencamera.org.uk/) / [SourceForge](https://sourceforge.net/projects/opencamera/)
+- This fork: **RealCamMI**, © Persona78 (2026), maintained at [github.com/Persona78/RealCamMI](https://github.com/Persona78/RealCamMI)
+- Base revision forked: `v1.56.2`, commit `0dd4cb`
+- All fork-specific changes are marked with `[REALCAMMI FORK]` inline comments throughout the source — see [Code Convention](#code-convention)
+- No upstream trademarks, branding, or the Open Camera name are used to represent this fork as the original application
 
-All credit for the original application, architecture, and the vast majority of the codebase belongs to **Mark Harman** and Open Camera's contributors.
+---
+
+## Why this fork exists
+
+Stock Open Camera does not behave correctly on certain devices: camera detection misses or wrongly exposes virtual sensor IDs, zoom silently fails during still capture, and default colour/tone rendering diverges noticeably from the stock camera app. Every change in this fork was driven by a specific, observed, reproducible problem on real hardware — verified with side-by-side comparisons against each device's stock camera app — not by general-purpose feature requests.
+
+**RealCamMI** stands for **Real**istic colour/tone output, originally driven by **M**ulti-**cam**era detection issues on **X**iaomi **(MI)** devices, with fixes that also benefit Ulefone hardware.
 
 ---
 
@@ -28,32 +38,39 @@ All credit for the original application, architecture, and the vast majority of 
 | Xiaomi Redmi Note 13 Pro 5G | garnet | ISOCELL HP3 200MP | Qualcomm SM7435 |
 | Ulefone Armor 25T Pro | — | Samsung S5KGN1 | MediaTek Helio G99 |
 
+Device-specific behaviour also exists for Samsung Galaxy S-series and Galaxy F-series devices (Edge Mode disabled to avoid glow/worm artefacts) and for generic device fingerprinting used to gate fork-specific code paths. Devices outside this list run the standard Open Camera code path unless explicitly fingerprinted.
+
 ---
 
 ## What's different from upstream Open Camera
 
-### 1. Multi-camera detection fix
+### 1. Multi-camera and physical-lens handling
 
-**File:** `CameraControllerManager2.java`
+**File:** `CameraControllerManager2.java`, `CameraController2.java`
 
-Stock Open Camera calls `CameraManager.getCameraIdList()` directly, which on Xiaomi/Qualcomm devices either omits real physical cameras hidden behind a logical multi-camera ID, or exposes virtual/depth/fusion camera IDs that can't actually be used — causing crashes or a misleading camera count.
+Upstream calls `CameraManager.getCameraIdList()` directly wherever a camera ID is needed. On Xiaomi/Qualcomm devices this either omits real physical sensors hidden behind a logical multi-camera ID, or exposes virtual/depth/fusion camera IDs that cannot actually be opened — causing crashes or a misleading camera count.
 
-This fork replaces that with a custom `buildCameraIdList()` that:
-- Expands logical camera IDs to their physical sub-camera IDs
-- Filters out virtual, depth, and fusion camera IDs
-- Validates every candidate with `isRealCamera()` (rejects sensors with no pixel array, no focal length, or missing `BACKWARD_COMPATIBLE` capability) and `supportsVideoRecording()` (rejects IDs that don't advertise usable `MediaRecorder` output sizes)
-- Probes hidden physical cameras (IDs 2–9) specifically on Xiaomi and Ulefone devices
+This fork replaces direct calls with a pre-built, validated camera list and adds physical-lens awareness:
+
+- `buildCameraIdList()` expands logical camera IDs to their physical sub-camera IDs, filters out virtual/depth/fusion IDs, and probes hidden physical cameras (IDs 2–9) specifically on Xiaomi and Ulefone devices
+- `isRealCamera()` rejects sensors with no pixel array, no focal length, or missing the `BACKWARD_COMPATIBLE` capability
+- `supportsVideoRecording()` rejects IDs that don't advertise usable `MediaRecorder` output sizes
+- `isHiddenCameraId()`, `findLogicalParentForPhysicalId()`, and `switchLens()` add explicit support for switching between physical sub-cameras (e.g. ultrawide/telephoto) behind a logical multi-camera ID — not present upstream
+- Lens type labelling (Macro detection via minimum focus distance) added on top of the Ultrawide/Telephoto thresholds reused from upstream's existing field-of-view logic
 
 ### 2. Zoom fix for Xiaomi Garnet
 
-**File:** `CameraController2.java`
+**File:** `CameraController2.java`, `Camera2Settings.java`
 
 The Qualcomm CamX HAL on Garnet ignores `CONTROL_ZOOM_RATIO` / `SCALER_CROP_REGION` during still capture (`IQSetupTriggerData() Fail to get zoom ratio, pZoomRatioData is NULL`), delivering a full-resolution unzoomed image regardless of the zoom level set in the preview.
 
-**Fix:** Software JPEG crop in `onImageAvailable()`:
+**Fix:** software JPEG crop in `onImageAvailable()`:
+
+- The requested zoom ratio is tracked separately (`camera_settings.current_zoom_ratio`) as each zoom request is issued, independent of whether the HAL applies it
 - The captured JPEG is decoded, cropped to the area corresponding to the active zoom ratio, and recompressed
-- Zoom ratio is read from `CaptureResult.CONTROL_ZOOM_RATIO` (updated every frame) instead of a cached value that can be stale during pinch-zoom gestures
+- Zoom ratio used for the crop is read from `CaptureResult.CONTROL_ZOOM_RATIO` (updated every frame) instead of a cached value that can be stale during pinch-zoom gestures
 - Crop centre offset fixed to correctly align with the image centre
+- A dedicated `CONTROL_ZOOM_RATIO` capture-request branch was added for Android 11+ devices that support it, alongside the legacy `SCALER_CROP_REGION` path
 
 ### 3. Custom tonemap curve profiles
 
@@ -67,7 +84,7 @@ Three custom tonemap profiles tuned through iterative pixel-level comparison aga
 | **JTLog** | Logarithmic profile — compressed shadows and highlights for maximum dynamic range, suitable for colour grading in post. |
 | **S-Log3** | Sony S-Log3 implementation — maximum dynamic range for professional post-production (DaVinci Resolve, CapCut, etc.). Footage will look flat and desaturated — requires a LUT or manual grade. |
 
-Also fixes the video log options being hidden unnecessarily: the `tonemap_log_max_curve_points_c` threshold was reduced from 128 to 17 (the actual number of points our curves use), so the Video Log and Profile Gamma options now correctly appear on Garnet.
+Also fixes the video log options being hidden unnecessarily: the `tonemap_log_max_curve_points_c` threshold was reduced from 128 to 17 (the actual number of points the custom curves use), so the Video Log and Profile Gamma options now correctly appear on Garnet.
 
 ### 4. Colour correction post-processing
 
@@ -75,7 +92,7 @@ Also fixes the video log options being hidden unnecessarily: the `tonemap_log_ma
 
 Corrects a systematic blue colour cast (B/R ratio ~1.12 vs ~1.00 in stock camera) using a `ColorMatrix` applied after capture: `R×1.01`, `G×1.00`, `B×0.92`.
 
-Cannot be done via `COLOR_CORRECTION_TRANSFORM` because the Qualcomm CamX HAL silently ignores that field when AWB is in AUTO mode (Android Camera2 API specification). Colour correction is applied in the post-processing pipeline instead, so it works regardless of the AWB mode.
+This cannot be done via `COLOR_CORRECTION_TRANSFORM` because the Qualcomm CamX HAL silently ignores that field when AWB is in AUTO mode (a documented limitation of the Android Camera2 API on this hardware). Colour correction is applied in the post-processing pipeline instead, so it works regardless of AWB mode.
 
 Activated via a dedicated toolbar button (tap to toggle; red = active). Visible in **Settings → GUI Icons → Show colour correction icon**.
 
@@ -92,18 +109,23 @@ Four advanced post-processing features powered by OpenCV, each with a dedicated 
 | **Contrast Enhancement** | CLAHE (`clipLimit=2.0, tile=8×8`) | Improves local contrast on the L channel (Lab colour space). Recovers shadow detail without blowing highlights. |
 | **Blur Detection** | Laplacian variance | Analyses the final image and shows a warning toast if blur score < 100. Does not modify the image. |
 
-Processing order: Colour correction → NR → Sharpen → CLAHE → Blur Detection.
-
-Each feature is toggled independently via its own toolbar button. All buttons are visible/hidden via **Settings → GUI Icons**.
+Processing order: Colour correction → NR → Sharpen → CLAHE → Blur Detection. Each feature is toggled independently via its own toolbar button. All buttons are visible/hidden via **Settings → GUI Icons**.
 
 ### 6. Device-specific image quality tuning
 
-**File:** `Camera2Settings.java`
+**File:** `Camera2Settings.java`, `CameraController2.java`
 
-- **Edge mode**: `EDGE_MODE_OFF` forced for Ulefone and Samsung S7 (prevents glow/worm artefacts). Default `EDGE_MODE_FAST` for all other devices including Garnet.
-- **Noise reduction**: `NOISE_REDUCTION_MODE_OFF` forced for Ulefone (prevents excessive blurring from the MediaTek ISP HAL-level NR). Log/flat profiles request `NOISE_REDUCTION_MINIMAL` + `EDGE_MODE_OFF` on all devices.
+- **Edge mode**: `EDGE_MODE_OFF` forced for Ulefone and Samsung Galaxy S7 (prevents glow/worm artefacts). Default `EDGE_MODE_FAST` for all other devices, including Garnet.
+- **Noise reduction**: `NOISE_REDUCTION_MODE_OFF` forced for Ulefone (prevents excessive blurring from the MediaTek ISP HAL-level NR). Log/flat profiles request `NOISE_REDUCTION_MODE_MINIMAL` + `EDGE_MODE_OFF` on all devices.
+- **Burst noise-reduction tuning**: a dedicated `NOISE_REDUCTION_MODE_FAST` / `EDGE_MODE_HIGH_QUALITY` path is applied for Xiaomi and Ulefone devices during normal-mode bursts with noise reduction enabled — not present upstream, which applies no per-manufacturer branching to burst capture settings.
 
-### 7. AndroidX migration
+### 7. Vendor camera-extension (HDR) activation
+
+**File:** `CameraController2.java`
+
+Upstream never automatically selects a vendor camera-extension session. This fork forces a `SESSIONTYPE_EXTENSION` HDR session on Xiaomi, Ulefone, and Samsung devices (Android 12+, where vendor extension characteristics are available), routing capture through the manufacturer's own HDR extension pipeline instead of the standard capture session.
+
+### 8. AndroidX migration
 
 All legacy Android preference and fragment APIs migrated to AndroidX across all 80 Java files:
 
@@ -115,29 +137,32 @@ All legacy Android preference and fragment APIs migrated to AndroidX across all 
 | `addPreferencesFromResource()` in `onCreate()` | `setPreferencesFromResource()` in `onCreatePreferences()` |
 | Custom `DialogPreference` subclasses | AndroidX `PreferenceDialogFragmentCompat` inner classes |
 
-### 8. Other improvements
+### 9. Other improvements
 
 - Default JPEG quality changed from 90% to 100%
 - When any post-processing feature is active, the intermediate capture is forced to quality 100 to avoid double-compression loss
 - Panorama JPEG quality now reads from user preference instead of hardcoded 90
 - `setTargetFragment()` (deprecated API 31+) removed throughout
 - All debug log tags unified to use the `TAG` constant (removed hardcoded `"XIAOMI_CAM"` strings)
+- Device fingerprinting (`is_xiaomi`, `is_ulefone`, `is_samsung`, `is_samsung_s7`) introduced as the basis for all device-specific branching described above — not present upstream, which has no per-manufacturer code paths
 
 ---
 
 ## New features vs upstream at a glance
 
-| Feature | Open Camera | RealCamMI |
+| Feature | Open Camera (v1.56.2) | RealCamMI |
 |---|---|---|
-| Physical camera discovery | `getCameraIdList()` only | Custom probe + validation |
+| Physical camera discovery | `getCameraIdList()` only | Validated, filtered list + physical lens switching |
 | Zoom in still capture (Garnet) | Broken (HAL bug) | Fixed via software crop |
 | Tonemap profiles | Gamma / flat only | JTVideo, JTLog, S-Log3 |
+| Vendor HDR extension session | Not auto-selected | Forced on Xiaomi/Ulefone/Samsung (Android 12+) |
 | Colour correction | — | Post-processing pipeline |
 | OpenCV sharpening | — | Unsharp Mask |
 | OpenCV noise reduction | — | Bilateral Filter |
 | OpenCV contrast enhancement | — | CLAHE |
 | Blur detection | — | Laplacian variance warning |
 | Default JPEG quality | 90% | 100% |
+| Per-manufacturer tuning | None | Xiaomi / Ulefone / Samsung specific paths |
 | AndroidX migration | Legacy | Full AndroidX |
 
 ---
@@ -166,22 +191,22 @@ implementation 'com.quickbirdstudios:opencv:4.5.3.0'
 
 ## Known Limitations
 
-- **Zoom crop resolution loss**: software zoom crop reduces effective resolution proportionally (~3MP at 2×, ~0.8MP at 4×). The Garnet sensor does not expose native 200MP resolution via Camera2 API.
+- **Zoom crop resolution loss**: software zoom crop reduces effective resolution proportionally (~3MP at 2×, ~0.8MP at 4×). The Garnet sensor does not expose native 200MP resolution via the Camera2 API.
 - **EXIF loss on zoom crop**: recompression of the zoomed JPEG discards the original EXIF metadata.
-- **Video colour shift on Garnet**: a colour/exposure shift occurs the moment video recording starts. This is a device-level HAL/firmware issue, confirmed not to occur on Ulefone or other Xiaomi devices, and is not fixable from application code. Use the stock camera app for video on Garnet; the photo mode is unaffected.
+- **Video colour shift on Garnet**: a colour/exposure shift occurs the moment video recording starts. This is a device-level HAL/firmware issue, confirmed not to occur on Ulefone or other Xiaomi devices, and is not fixable from application code. Use the stock camera app for video on Garnet; photo mode is unaffected.
 - **OpenCV post-processing latency**: bilateral filter and CLAHE require JPEG decode + recompression, adding save time proportional to image resolution.
 
 ---
 
 ## Code Convention
 
-All fork-specific changes are marked with `[REALCAMMI FORK]` in inline comments throughout the source, making it straightforward to identify changes when merging upstream updates.
+All fork-specific changes are marked with `[REALCAMMI FORK]` in inline comments throughout the source, documenting the rationale for each deviation and making it straightforward to identify and re-apply changes when merging future upstream updates.
 
 ---
 
 ## License
 
-RealCamMI is licensed under the **GNU General Public License v3.0 or later**, the same as upstream Open Camera. See `gpl-3.0.txt` for the full license text.
+RealCamMI is licensed under the **GNU General Public License v3.0 or later**, the same licence as upstream Open Camera, as required for any distributed derivative work under the GPL. See `gpl-3.0.txt` for the full license text. No additional restrictions are imposed beyond those of the GPLv3.
 
 ---
 
@@ -215,6 +240,3 @@ RealCamMI is licensed under the **GNU General Public License v3.0 or later**, th
 ![Photo Sample](docs/images/img(8).jpg)
 ![Photo Sample](docs/images/img(9).jpg)
 ![Photo Sample](docs/images/img(10).jpg)
-
-.
-
