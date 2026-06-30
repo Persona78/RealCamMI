@@ -119,6 +119,15 @@ Processing order: Colour correction → NR → Sharpen → CLAHE → Blur Detect
 - **Noise reduction**: `NOISE_REDUCTION_MODE_OFF` forced for Ulefone (prevents excessive blurring from the MediaTek ISP HAL-level NR). Log/flat profiles request `NOISE_REDUCTION_MODE_MINIMAL` + `EDGE_MODE_OFF` on all devices.
 - **Burst noise-reduction tuning**: a dedicated `NOISE_REDUCTION_MODE_FAST` / `EDGE_MODE_HIGH_QUALITY` path is applied for Xiaomi and Ulefone devices during normal-mode bursts with noise reduction enabled — not present upstream, which applies no per-manufacturer branching to burst capture settings.
 
+#### Why RealCamMI images sustain more zoom than the Ulefone stock camera
+
+The Ulefone stock camera app is optimised by the manufacturer for immediate on-screen viewing, not for detail preservation at high zoom levels. Two decisions at factory level work against detail retention:
+
+- The MediaTek ISP applies aggressive hardware-level Noise Reduction before the image ever reaches the JPEG encoder. This permanently erases high-frequency detail (fine textures, subtle edges) that cannot be recovered afterwards.
+- The stock app uses a lower JPEG quality setting (typically 85–95%), introducing compression artefacts that become visible as soon as the image is enlarged.
+
+RealCamMI counters both: `NOISE_REDUCTION_MODE_OFF` is forced on Ulefone to preserve the raw sensor detail the ISP would otherwise discard, and JPEG quality is set to 100% to eliminate compression loss. The trade-off is larger file sizes and slightly more visible noise in low-light conditions — but maximum detail that survives digital zoom.
+
 ### 7. Vendor camera-extension (HDR) activation
 
 **File:** `CameraController2.java`
