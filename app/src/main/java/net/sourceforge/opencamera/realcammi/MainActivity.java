@@ -106,10 +106,6 @@ import androidx.preference.PreferenceFragmentCompat;
  */
 public class MainActivity extends AppCompatActivity implements PreferenceFragmentCompat.OnPreferenceStartFragmentCallback {
 
-    static {
-        System.loadLibrary("image"); // testing libimage.so
-    }
-
     private static final String TAG = "MainActivity";
 
     private static int activity_count = 0;
