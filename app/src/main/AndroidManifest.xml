@@ -42,10 +42,6 @@
         android:largeHeap="true"
         android:hardwareAccelerated="true"
         >
-		
-		<uses-native-library
-            android:name="libimage.so"
-            android:required="false"/>
 
         <!-- Fix audio fail on Camcorder -->
         <meta-data android:name="android.permission.attribution.AUDIO_RECORD" android:value="audio_record" />
