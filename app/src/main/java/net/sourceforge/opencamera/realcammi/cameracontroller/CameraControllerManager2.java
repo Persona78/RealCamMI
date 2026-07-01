@@ -84,6 +84,13 @@ public class CameraControllerManager2 extends CameraControllerManager {
                         // Redmi 13C
                         Build.DEVICE.contains("gust") ||
                         Build.MODEL.contains("23108rn04y") ||
+                        // Xiaomi 15T
+                        Build.DEVICE.contains("goya") ||
+                        Build.MODEL.contains("25069ptebg") ||
+                        // Xiaomi 15T Pro
+                        Build.DEVICE.contains("klimt") ||
+                        Build.MODEL.contains("2506bpn68g") ||
+                        Build.MODEL.contains("2506bpn68r") ||
                         // poco x6 5g
                         Build.DEVICE.contains("garnet") ||
                         Build.MODEL.contains("23122pcd1g") ||

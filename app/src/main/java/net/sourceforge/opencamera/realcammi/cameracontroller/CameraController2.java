@@ -151,9 +151,9 @@ public class CameraController2 extends CameraController {
     private final static float [] jtvideo_values_base = new float[] {
             0.00f, 0.00f,    // pure black
             0.01f, 0.018f,   // near-black
-            0.02f, 0.028f,   // deep shadows
+            0.02f, 0.030f,   // deep shadows
             0.04f, 0.076f,   // dark shadows
-            0.09f, 0.078f,   // shadow-midtone transition
+            0.09f, 0.080f,   // shadow-midtone transition
             0.13f, 0.18f,    // lower midtones
             0.18f, 0.27f,    // midtones
             0.23f, 0.29f,    // mid-midtones
@@ -1319,6 +1319,13 @@ public class CameraController2 extends CameraController {
                         // Redmi 13C
                         Build.DEVICE.contains("gust") ||
                         Build.MODEL.contains("23108rn04y") ||
+                        // Xiaomi 15T
+                        Build.DEVICE.contains("goya") ||
+                        Build.MODEL.contains("25069ptebg") ||
+                        // Xiaomi 15T Pro
+                        Build.DEVICE.contains("klimt") ||
+                        Build.MODEL.contains("2506bpn68g") ||
+                        Build.MODEL.contains("2506bpn68r") ||
                         // poco x6 5g
                         Build.DEVICE.contains("garnet") ||
                         Build.MODEL.contains("23122pcd1g") ||
@@ -1769,7 +1776,7 @@ public class CameraController2 extends CameraController {
         if( in_values.length >= 2*min_points_c ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "already enough points");
-            return in_values; // fine
+            return in_values;
         }
         List<Pair<Float, Float>> points = new ArrayList<>();
         for(int i=0;i<in_values.length/2;i++) {
@@ -1782,7 +1789,6 @@ public class CameraController2 extends CameraController {
         }
 
         while( points.size() < min_points_c ) {
-            // find largest interval, and subdivide
             int largest_indx = 0;
             float largest_dist = 0.0f;
             for(int i=0;i<points.size()-1;i++) {
@@ -1794,14 +1800,57 @@ public class CameraController2 extends CameraController {
                     largest_dist = dist;
                 }
             }
-            /*if( MyDebug.LOG )
-                Log.d(TAG, "largest indx " + largest_indx + " dist: " + largest_dist);*/
-            Pair<Float, Float> p0 = points.get(largest_indx);
-            Pair<Float, Float> p1 = points.get(largest_indx+1);
-            float mid_x = 0.5f*(p0.first + p1.first);
-            float mid_y = 0.5f*(p0.second + p1.second);
-            /*if( MyDebug.LOG )
-                Log.d(TAG, "    insert: " + mid_x + " , " + mid_y);*/
+
+            // Points within the current interval where the new point will be inserted
+            Pair<Float, Float> p1 = points.get(largest_indx);
+            Pair<Float, Float> p2 = points.get(largest_indx+1);
+
+            // Neighbors for tangent calculation
+            Pair<Float, Float> p0 = (largest_indx > 0) ? points.get(largest_indx-1) : p1;
+            Pair<Float, Float> p3 = (largest_indx + 2 < points.size()) ? points.get(largest_indx+2) : p2;
+
+            float mid_x = 0.5f * (p1.first + p2.first);
+
+            // Calculate the slopes of the adjacent segments.
+            float d0 = (p1.first - p0.first > 0) ? (p1.second - p0.second) / (p1.first - p0.first) : 0.0f;
+            float d1 = (p2.first - p1.first > 0) ? (p2.second - p1.second) / (p2.first - p1.first) : 0.0f;
+            float d2 = (p3.first - p2.first > 0) ? (p3.second - p2.second) / (p3.first - p2.first) : 0.0f;
+
+            // Calculate the tangents at points p1 and p2 (weighted harmonic mean to avoid overshoot).
+            float m1 = 0.0f;
+            if ((d0 > 0 && d1 > 0) || (d0 < 0 && d1 < 0)) {
+                m1 = 2.0f / (1.0f/d0 + 1.0f/d1); // Garante monotonicidade em p1
+            } else if (d0 == 0 || d1 == 0) {
+                m1 = 0.0f; // Força tangente plana se houver um pico/vale local
+            }
+
+            float m2 = 0.0f;
+            if ((d1 > 0 && d2 > 0) || (d1 < 0 && d2 < 0)) {
+                m2 = 2.0f / (1.0f/d1 + 1.0f/d2); // Garante monotonicidade em p2
+            } else if (d1 == 0 || d2 == 0) {
+                m2 = 0.0f;
+            }
+
+            // Cubic Hermite interpolation at the midpoint (t = 0.5f)
+            float t = 0.5f;
+            float t2 = t * t;
+            float t3 = t2 * t;
+
+            // Hermite basis functions
+            float h00 = 2.0f*t3 - 3.0f*t2 + 1.0f;
+            float h10 = t3 - 2.0f*t2 + t;
+            float h01 = -2.0f*t3 + 3.0f*t2;
+            float h11 = t3 - t2;
+
+            // Length of the interval on the axisX
+            float h_x = p2.first - p1.first;
+
+            // Safely estimated final value of Y
+            float mid_y = h00 * p1.second + h10 * h_x * m1 + h01 * p2.second + h11 * h_x * m2;
+
+            // Clampa for absolute security of color limits.
+            mid_y = Math.max(0.0f, Math.min(1.0f, mid_y));
+
             points.add(largest_indx+1, new Pair<>(mid_x, mid_y));
         }
 
@@ -1810,11 +1859,10 @@ public class CameraController2 extends CameraController {
             Pair<Float, Float> point = points.get(i);
             out_values[2*i] = point.first;
             out_values[2*i+1] = point.second;
-            /*if( MyDebug.LOG )
-                Log.d(TAG, "out point[" + i + "]: " + point.first + " , " + point.second);*/
         }
         return out_values;
     }
+
 
     private void closePictureImageReader() {
         if( MyDebug.LOG )
