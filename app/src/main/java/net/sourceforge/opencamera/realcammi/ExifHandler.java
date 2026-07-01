@@ -877,6 +877,14 @@ public class ExifHandler extends Thread {
 
         if( request.remove_device_exif == ImageSaver.Request.RemoveDeviceExif.OFF ) {
             transferDeviceExif(exif, exif_new);
+            // [REALCAMMI FORK] Some vendor camera HALs (e.g., Qualcomm CamX on Xiaomi devices)
+            // write an incorrect FocalLengthIn35mmFilm value into the JPEG blob for third-party
+            // Camera2 capture requests (observed: 23mm vs the correct ~35mm for the same physical
+            // lens, matching the stock camera app). When we have a value computed from the actual
+            // sensor characteristics (see ImageSaver.saveImage), prefer it over the HAL's value.
+            if( request.focal_length_35mm_equiv > 0.0f ) {
+                exif_new.setAttribute(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, String.valueOf(Math.round(request.focal_length_35mm_equiv)));
+            }
         }
 
         if( request.remove_device_exif == ImageSaver.Request.RemoveDeviceExif.OFF || request.remove_device_exif == ImageSaver.Request.RemoveDeviceExif.KEEP_DATETIME ) {

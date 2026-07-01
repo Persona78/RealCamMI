@@ -150,21 +150,21 @@ public class CameraController2 extends CameraController {
     // When merging upstream changes to CameraController2.java, preserve this block.
     private final static float [] jtvideo_values_base = new float[] {
             0.00f, 0.00f,    // pure black
-            0.01f, 0.015f,   // near-black (adjusted from 0.018 to preserve deep blacks)
-            0.02f, 0.028f,   // deep shadows
-            0.04f, 0.052f,   // dark shadows (fixed the excessive jump of 0.076)
-            0.09f, 0.093f,   // shadow-midtone transition (natural progression)
-            0.13f, 0.16f,    // lower midtones (smoothed to restore contrast)
-            0.18f, 0.23f,    // midtones
-            0.23f, 0.29f,    // mid-midtones (anchor point maintained)
-            0.35f, 0.42f,    // upper midtones
-            0.45f, 0.53f,    // midtone-highlight transition (fixed the 0.65 jump that was blowing out the brightness)
-            0.51f, 0.59f,    // lower highlights (the curve now rises steadily)
-            0.60f, 0.68f,    // highlights
-            0.67f, 0.75f,    // upper highlights
-            0.72f, 0.78f,    // bright highlights
-            0.86f, 0.90f,    // near-white
-            0.90f, 0.93f,    // almost white
+            0.01f, 0.02f,    // near-black (slightly lifted for more shadow detail, still below next point)
+            0.02f, 0.035f,   // deep shadows (raised to stay above near-black, keeps monotonic rise)
+            0.04f, 0.06f,    // dark shadows
+            0.09f, 0.11f,    // shadow-midtone transition
+            0.13f, 0.19f,    // lower midtones (extra lift for punch)
+            0.18f, 0.30f,    // midtones (boosted slope for more punch, stays below next anchor)
+            0.23f, 0.34f,    // mid-midtones (raised slightly to keep the rise valid after the 0.18 boost)
+            0.35f, 0.44f,    // upper midtones
+            0.45f, 0.55f,    // midtone-highlight transition
+            0.51f, 0.61f,    // lower highlights
+            0.60f, 0.70f,    // highlights
+            0.67f, 0.77f,    // upper highlights
+            0.72f, 0.80f,    // bright highlights
+            0.86f, 0.92f,    // near-white
+            0.90f, 0.94f,    // almost white
             1.00f, 1.00f     // pure white stays white
     };
 

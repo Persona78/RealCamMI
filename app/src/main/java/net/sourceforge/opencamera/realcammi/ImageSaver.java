@@ -141,6 +141,10 @@ public class ImageSaver extends Thread {
         boolean panorama_dir_left_to_right; // used for panorama
         float camera_view_angle_x; // used for panorama
         float camera_view_angle_y; // used for panorama
+        // [REALCAMMI FORK] corrected 35mm-equivalent focal length, computed from actual sensor
+        // characteristics; 0 means "not available", so ExifHandler falls back to the device's
+        // own (potentially inaccurate) HAL-reported value. See setExif() in ExifHandler.java.
+        float focal_length_35mm_equiv;
         final boolean is_front_facing;
         boolean mirror;
         final Date current_date;
@@ -375,6 +379,20 @@ public class ImageSaver extends Thread {
             //cost = (n_images > 1 ? 2 : 1) * queue_cost_jpeg_c;
         }
         return cost;
+    }
+
+    // [REALCAMMI FORK] Computes the 35mm-equivalent focal length from the actual horizontal
+    // field of view of the captured picture (in degrees). Standard 35mm film width is 36mm,
+    // so half-width is 18mm; f_equiv = 18 / tan(fov_x/2). This lets us override incorrect
+    // FocalLengthIn35mmFilm EXIF values baked in by some vendor camera HALs (see ExifHandler).
+    private static float computeFocalLength35mmEquiv(float view_angle_x_degrees) {
+        if( view_angle_x_degrees <= 0.0f || view_angle_x_degrees >= 180.0f )
+            return 0.0f;
+        double half_angle_rad = Math.toRadians(view_angle_x_degrees) / 2.0;
+        double tan_half_angle = Math.tan(half_angle_rad);
+        if( tan_half_angle <= 0.0 )
+            return 0.0f;
+        return (float)(18.0 / tan_half_angle);
     }
 
     /** Computes the cost (in terms of number of slots on the image queue) of a new photo.
@@ -907,6 +925,16 @@ public class ImageSaver extends Thread {
                 custom_tag_artist,
                 custom_tag_copyright,
                 sample_factor);
+
+        // [REALCAMMI FORK] Compute a corrected 35mm-equivalent focal length from the actual
+        // picture's field of view (which already accounts for the real sensor characteristics
+        // and the captured image's aspect ratio). Used by ExifHandler to override any incorrect
+        // value baked in by the vendor camera HAL. Only applicable for JPEG from Camera2/HAL;
+        // leave as 0 (meaning "not available") otherwise, e.g. for RAW.
+        if( !is_raw ) {
+            float view_angle_x = main_activity.getPreview().getViewAngleX(false);
+            request.focal_length_35mm_equiv = computeFocalLength35mmEquiv(view_angle_x);
+        }
 
         if( do_in_background ) {
             if( MyDebug.LOG )
