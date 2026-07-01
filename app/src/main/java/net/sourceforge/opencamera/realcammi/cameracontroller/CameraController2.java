@@ -150,23 +150,24 @@ public class CameraController2 extends CameraController {
     // When merging upstream changes to CameraController2.java, preserve this block.
     private final static float [] jtvideo_values_base = new float[] {
             0.00f, 0.00f,    // pure black
-            0.01f, 0.018f,   // near-black
-            0.02f, 0.030f,   // deep shadows
-            0.04f, 0.076f,   // dark shadows
-            0.09f, 0.080f,   // shadow-midtone transition
-            0.13f, 0.18f,    // lower midtones
-            0.18f, 0.27f,    // midtones
-            0.23f, 0.29f,    // mid-midtones
-            0.35f, 0.41f,    // upper midtones
-            0.45f, 0.65f,    // midtone-highlight transition
-            0.51f, 0.66f,    // lower highlights
+            0.01f, 0.015f,   // near-black (adjusted from 0.018 to preserve deep blacks)
+            0.02f, 0.028f,   // deep shadows
+            0.04f, 0.052f,   // dark shadows (fixed the excessive jump of 0.076)
+            0.09f, 0.093f,   // shadow-midtone transition (natural progression)
+            0.13f, 0.16f,    // lower midtones (smoothed to restore contrast)
+            0.18f, 0.23f,    // midtones
+            0.23f, 0.29f,    // mid-midtones (anchor point maintained)
+            0.35f, 0.42f,    // upper midtones
+            0.45f, 0.53f,    // midtone-highlight transition (fixed the 0.65 jump that was blowing out the brightness)
+            0.51f, 0.59f,    // lower highlights (the curve now rises steadily)
             0.60f, 0.68f,    // highlights
-            0.67f, 0.74f,    // upper highlights
-            0.72f, 0.80f,    // bright highlights
+            0.67f, 0.75f,    // upper highlights
+            0.72f, 0.78f,    // bright highlights
             0.86f, 0.90f,    // near-white
-            0.90f, 0.92f,   // almost white
+            0.90f, 0.93f,    // almost white
             1.00f, 1.00f     // pure white stays white
     };
+
 
     final float [] jtvideo_values;
     private final static float [] jtlog_values_base = new float[] {
