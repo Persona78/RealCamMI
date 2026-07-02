@@ -105,11 +105,23 @@ public class TextFormatter {
                     Log.d(TAG, "geo_angle: " + geo_angle);
                 if( !gps_stamp.isEmpty() )
                     gps_stamp += ", ";
-                gps_stamp += String.valueOf(Math.round(geo_angle)) + (char)0x00B0;
+                gps_stamp += String.valueOf(Math.round(geo_angle)) + (char)0x00B0 + " " + getCompassDirection(geo_angle);
             }
         }
         // don't log gps_stamp, in case of privacy!
         return gps_stamp;
+    }
+
+    // [REALCAMMI FORK] Converts a compass heading (0-360 degrees) into an 8-point cardinal
+    // direction abbreviation (N, NE, E, SE, S, SW, W, NW). This is appended next to the degree
+    // symbol in the GPS/direction stamp, to avoid the "XX°" value being mistaken for a
+    // temperature reading (it is actually the device's compass heading, not a temperature).
+    private static String getCompassDirection(float geo_angle_degrees) {
+        final String [] directions = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+        int index = Math.round(geo_angle_degrees / 45.0f) % 8;
+        if( index < 0 )
+            index += 8;
+        return directions[index];
     }
 
     public static String formatTimeMS(long time_ms) {

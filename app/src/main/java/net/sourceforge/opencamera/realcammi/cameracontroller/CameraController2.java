@@ -150,21 +150,21 @@ public class CameraController2 extends CameraController {
     // When merging upstream changes to CameraController2.java, preserve this block.
     private final static float [] jtvideo_values_base = new float[] {
             0.00f, 0.00f,    // pure black
-            0.01f, 0.02f,    // near-black (slightly lifted for more shadow detail, still below next point)
-            0.02f, 0.035f,   // deep shadows (raised to stay above near-black, keeps monotonic rise)
-            0.04f, 0.06f,    // dark shadows
-            0.09f, 0.11f,    // shadow-midtone transition
-            0.13f, 0.19f,    // lower midtones (extra lift for punch)
-            0.18f, 0.30f,    // midtones (boosted slope for more punch, stays below next anchor)
-            0.23f, 0.34f,    // mid-midtones (raised slightly to keep the rise valid after the 0.18 boost)
-            0.35f, 0.44f,    // upper midtones
-            0.45f, 0.55f,    // midtone-highlight transition
-            0.51f, 0.61f,    // lower highlights
-            0.60f, 0.70f,    // highlights
-            0.67f, 0.77f,    // upper highlights
-            0.72f, 0.80f,    // bright highlights
-            0.86f, 0.92f,    // near-white
-            0.90f, 0.94f,    // almost white
+            0.01f, 0.014f,   // near-black
+            0.02f, 0.026f,   // deep shadows
+            0.04f, 0.048f,   // dark shadows
+            0.09f, 0.098f,   // shadow-midtone transition
+            0.13f, 0.14f,    // lower midtones
+            0.18f, 0.20f,    // midtones
+            0.23f, 0.27f,    // mid-midtones
+            0.35f, 0.40f,    // upper midtones
+            0.45f, 0.50f,    // midtone-highlight transition
+            0.51f, 0.57f,    // lower highlights
+            0.60f, 0.66f,    // highlights
+            0.67f, 0.73f,    // upper highlights
+            0.72f, 0.78f,    // bright highlights
+            0.86f, 0.90f,    // near-white
+            0.90f, 0.93f,    // almost white
             1.00f, 1.00f     // pure white stays white
     };
 
