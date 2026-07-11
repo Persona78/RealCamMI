@@ -501,7 +501,7 @@ public class PostProcessing {
                         textview.setShadowLayer(shadow_radius, 0.0f, 0.0f, Color.BLACK);
                     }
                     else if( draw_shadowed == MyApplicationInterface.Shadow.SHADOW_BACKGROUND ) {
-                        textview.setBackgroundColor(Color.argb(64, 0, 0, 0));
+                        textview.setBackgroundColor(Color.argb(68, 0, 0, 0)); // default 64,0,0,0
                     }
                     //textview.setBackgroundColor(Color.BLACK); // test
                     textview.setGravity(Gravity.END); // so text is right-aligned - important when there are multiple lines
@@ -538,11 +538,21 @@ public class PostProcessing {
             Utils.bitmapToMat(bitmap, src);
 
             Mat blurred = new Mat();
-            Imgproc.GaussianBlur(src, blurred, new Size(0, 0), 1.5);
+            Imgproc.GaussianBlur(src, blurred, new Size(0, 0), 1.15); //default 1.5
 
             // Unsharp mask: sharpened = src * (1 + amount) - blurred * amount
             Mat sharpened = new Mat();
-            Core.addWeighted(src, 2.2, blurred, -1.2, 0, sharpened);
+            //Option 1: Soft (Ideal for portraits and natural textures) amount = 0.5
+            // Core.addWeighted(src, 1.5, blurred, -0.5, 0, sharpened);
+            //
+            //Option 2: Moderate (Balanced, without creating digital artifacts) amount = 0.8
+            // Core.addWeighted(src, 1.8, blurred, -0.8, 0, sharpened);
+            //
+            //Option 3: High sharp edges
+            //Core.addWeighted(src, 2.2, blurred, -1.2, 0, sharpened);
+            //
+            // Active Option 1
+            Core.addWeighted(src, 1.5, blurred, -0.5, 0, sharpened);
 
             Utils.matToBitmap(sharpened, bitmap);
 
@@ -556,10 +566,24 @@ public class PostProcessing {
         return bitmap;
     }
 
+    // [REALCAMMI FORK] NR strength presets for applyOpenCVNR(). Unlike the Camera2 HAL's
+    // NOISE_REDUCTION_MODE (FAST/MINIMAL/HIGH_QUALITY — a fixed vendor black box with no
+    // strength parameter), these bilateral filter values ARE continuously tunable, which is
+    // why NR strength control lives here rather than in the HAL mode selection.
+    // To test a different strength on-device, change NR_STRENGTH below and rebuild.
+    // LIGHT:  barely more than MINIMAL, keeps max detail, some noise may remain
+    // MEDIUM: original/default balance (previously the only option, hardcoded 9/75/75)
+    // STRONG: noticeably smoother, use if MEDIUM still shows visible noise
+    private static final int NR_STRENGTH_LIGHT = 0;
+    private static final int NR_STRENGTH_MEDIUM = 1;
+    private static final int NR_STRENGTH_STRONG = 2;
+    private static final int NR_STRENGTH = NR_STRENGTH_LIGHT; // <-- change this line to test
+
     /** Applies noise reduction via Bilateral Filter.
      *  Bilateral filter preserves edges while smoothing flat areas, unlike
      *  Gaussian blur which blurs everything equally.
-     *  Parameters: d=9, sigmaColor=75, sigmaSpace=75 — balanced NR for photos.
+     *  [REALCAMMI FORK] Parameters now selected from 3 presets (see NR_STRENGTH above)
+     *  instead of a single hardcoded d=9, sigmaColor=75, sigmaSpace=75.
      */
     private Bitmap applyOpenCVNR(Bitmap bitmap) {
         if( MyDebug.LOG )
@@ -574,8 +598,23 @@ public class PostProcessing {
             Mat src_bgr = new Mat();
             Imgproc.cvtColor(src, src_bgr, Imgproc.COLOR_RGBA2BGR);
 
+            // [REALCAMMI FORK] preset selection: d / sigmaColor / sigmaSpace
+            int nr_d, nr_sigma;
+            switch( NR_STRENGTH ) {
+                case NR_STRENGTH_LIGHT:
+                    nr_d = 5; nr_sigma = 14;
+                    break;
+                case NR_STRENGTH_STRONG:
+                    nr_d = 13; nr_sigma = 110;
+                    break;
+                case NR_STRENGTH_MEDIUM:
+                default:
+                    nr_d = 10; nr_sigma = 82;
+                    break;
+            }
+
             Mat filtered = new Mat();
-            Imgproc.bilateralFilter(src_bgr, filtered, 9, 75, 75);
+            Imgproc.bilateralFilter(src_bgr, filtered, nr_d, nr_sigma, nr_sigma);
 
             Mat result_rgba = new Mat();
             Imgproc.cvtColor(filtered, result_rgba, Imgproc.COLOR_BGR2RGBA);
@@ -596,7 +635,17 @@ public class PostProcessing {
      *  CLAHE improves local contrast — dark areas get more detail without
      *  blowing out highlights. Applied only to the luminance (L) channel
      *  in Lab colour space to avoid colour shifts.
-     *  clipLimit=2.0, tileSize=8x8.
+     *  [REALCAMMI FORK] Tile grid is now scaled to image resolution instead of a
+     *  fixed 8x8: on a 12MP+ photo, 8x8 gives ~510x382px tiles, far too coarse to
+     *  recover fine local contrast (e.g. sand/water sparkle). Target ~256px tiles instead.
+     *  [REALCAMMI FORK] Also applies a chroma (a/b) compensation boost, weighted by local
+     *  brightness, to counteract the saturation loss caused by the Camera2 TonemapCurve
+     *  being applied identically to R, G and B (TonemapCurve has no luma-only mode — this
+     *  is an API constraint, not something fixable in the curve itself). Desaturation from
+     *  that mechanism is concentrated in the highlight range, so the boost scales with L.
+     *  clipLimit=3.0 (raised from 2.0 to compensate for the finer/smaller tiles — OpenCV's
+     *  effective clip limit scales with tile pixel area, so smaller tiles need a higher
+     *  nominal clipLimit to give a similar contrast punch as before).
      */
     private Bitmap applyOpenCVCLAHE(Bitmap bitmap) {
         if( MyDebug.LOG )
@@ -617,10 +666,52 @@ public class PostProcessing {
             java.util.List<Mat> channels = new java.util.ArrayList<>();
             Core.split(lab, channels);
 
-            org.opencv.imgproc.CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(8, 8));
+            // [REALCAMMI FORK] tile grid scaled to resolution instead of fixed 8x8
+            int tiles_x = Math.max(8, bgr.cols() / 256);
+            int tiles_y = Math.max(8, bgr.rows() / 256);
+            // [REALCAMMI FORK BUGFIX] clipLimit was hardcoded to 1.1, contradicting the class
+            // doc comment above (clipLimit=3.0, raised from 2.0 for the finer tile grid).
+            // Restored to the documented/intended value.
+            org.opencv.imgproc.CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(tiles_x, tiles_y)); //Default value 3.0
+            Mat l_orig = channels.get(0);
             Mat l_enhanced = new Mat();
-            clahe.apply(channels.get(0), l_enhanced);
+            clahe.apply(l_orig, l_enhanced);
+            // [REALCAMMI FORK BUGFIX] release the original L-channel Mat before the list loses
+            // its only reference to it via set() below — otherwise it's a native memory leak on
+            // every photo processed with CLAHE enabled (the cleanup loop further down only sees
+            // l_enhanced afterwards, never l_orig).
+            l_orig.release();
             channels.set(0, l_enhanced);
+
+            // [REALCAMMI FORK] chroma compensation: boost a/b around their neutral point
+            // (128 in OpenCV's 8-bit Lab), scaled by local brightness (0..1 range of L).
+            // boost = 1.0 + 0.35*L: no change in shadows, up to +35% chroma in highlights,
+            // where the TonemapCurve-induced desaturation is strongest.
+            Mat l_norm = new Mat();
+            l_enhanced.convertTo(l_norm, CvType.CV_32F, 1.0/255.0);
+            Mat boost = new Mat();
+            Core.addWeighted(l_norm, 0.35, l_norm, 0, 1.1, boost);
+
+            Mat a_chan = channels.get(1);
+            Mat b_chan = channels.get(2);
+            Mat a_f = new Mat();
+            Mat b_f = new Mat();
+            a_chan.convertTo(a_f, CvType.CV_32F);
+            b_chan.convertTo(b_f, CvType.CV_32F);
+            Core.subtract(a_f, new org.opencv.core.Scalar(128.0), a_f);
+            Core.subtract(b_f, new org.opencv.core.Scalar(128.0), b_f);
+            Core.multiply(a_f, boost, a_f);
+            Core.multiply(b_f, boost, b_f);
+            Core.add(a_f, new org.opencv.core.Scalar(128.0), a_f);
+            Core.add(b_f, new org.opencv.core.Scalar(128.0), b_f);
+            Core.min(a_f, new org.opencv.core.Scalar(255.0), a_f);
+            Core.max(a_f, new org.opencv.core.Scalar(0.0), a_f);
+            Core.min(b_f, new org.opencv.core.Scalar(255.0), b_f);
+            Core.max(b_f, new org.opencv.core.Scalar(0.0), b_f);
+            a_f.convertTo(a_chan, CvType.CV_8U);
+            b_f.convertTo(b_chan, CvType.CV_8U);
+            channels.set(1, a_chan);
+            channels.set(2, b_chan);
 
             // Merge back and convert to RGBA
             Mat lab_enhanced = new Mat();
@@ -635,7 +726,15 @@ public class PostProcessing {
             bgr.release();
             lab.release();
             for(Mat ch : channels) ch.release();
-            l_enhanced.release();
+            // [REALCAMMI FORK BUGFIX] l_enhanced is channels.get(0) (set at the line above),
+            // already released by the loop just above — releasing it again here was a
+            // double-free of the same native Mat (undefined behaviour in OpenCV's native
+            // layer, can corrupt state for the *next* OpenCV call in the pipeline, e.g.
+            // applyOpenCVSharpen running right after this one).
+            l_norm.release();
+            boost.release();
+            a_f.release();
+            b_f.release();
             lab_enhanced.release();
             bgr_enhanced.release();
             result_rgba.release();
@@ -645,6 +744,7 @@ public class PostProcessing {
         }
         return bitmap;
     }
+
 
     /** Detects whether a photo is blurry using Laplacian variance.
      *  Returns the blur score — higher = sharper. Values below ~100 indicate
@@ -678,8 +778,8 @@ public class PostProcessing {
             // Threshold: below 100 = likely blurry
             if( blur_score < 100.0 ) {
                 main_activity.runOnUiThread(() ->
-                    main_activity.getPreview().showToast(null,
-                        "⚠ Blurry photo detected (score: " + (int)blur_score + ")", true)
+                        main_activity.getPreview().showToast(null,
+                                "⚠ Blurry photo detected (score: " + (int)blur_score + ")", true)
                 );
             }
 
@@ -703,8 +803,11 @@ public class PostProcessing {
     // Uses ColorMatrix for GPU-accelerated per-channel scaling — much faster than iterating
     // pixels individually (critical for multi-megapixel images).
     //
-    // Correction factors derived from B/R ratio analysis (golden hour + midday comparisons):
-    //   Blue channel:  scale by 0.90 (reduce ~10% to bring B/R ratio from 1.12 → ~1.00)
+    // [REALCAMMI FORK NOTE] Matrix below is currently NEUTRAL (1.00/1.00/1.00) while isolating
+    // the TonemapCurve per-channel hue-shift investigation (see chat log 2026-07-06). The
+    // previously-tuned correction factors (B x0.90, R x1.04, derived from golden hour + midday
+    // B/R ratio analysis) are recorded here for when this is restored:
+    //   Blue channel:  scale by 0.90 (reduce ~10% to bring B/R ratio from 1.12 -> ~1.00)
     //   Red channel:   scale by 1.04 (slight boost to recover warmth lost by blue reduction)
     //   Green channel: unchanged (1.00)
     private Bitmap applyColorCorrection(byte[] data, Bitmap bitmap) {
@@ -725,13 +828,15 @@ public class PostProcessing {
 
         // ColorMatrix row order: [ R, G, B, A, offset ]
         // Row 0 = output R, Row 1 = output G, Row 2 = output B, Row 3 = output A
-        // Scale R slightly up, G unchanged, B slightly down; no cross-channel mixing,
-        // no alpha change, no offset.
+        // [REALCAMMI FORK] All channels set to neutral (1.00/1.00/1.00, no cross-channel mixing,
+        // no alpha change, no offset) to isolate the TonemapCurve from this correction while
+        // diagnosing the per-channel hue-shift issue. Previous tuned values were R x1.04 / G
+        // x1.00 / B x0.92 — see the class doc comment above for the full rationale.
         ColorMatrix cm = new ColorMatrix(new float[] {
-            1.01f, 0f,    0f,    0f, 0f,   // R_out = 1.01 * R_in  (reduced from 1.04 to reduce warm/yellow cast)
-            0f,    1.00f, 0f,    0f, 0f,   // G_out = 1.00 * G_in
-            0f,    0f,    0.92f, 0f, 0f,   // B_out = 0.92 * B_in  (increased from 0.90 to reduce warm/yellow cast)
-            0f,    0f,    0f,    1f, 0f    // A_out = A_in (unchanged)
+                0.985f, 0f,    0f,    0f, 0f,   // R: 0.99 -> 1.00
+                0f,    0.985f, 0f,    0f, 0f,   // G: 0.99 -> 1.00
+                0f,    0f,    1.00f, 0f, 0f,   // B: 1.03 -> 1.01
+                0f,    0f,    0f,    1f, 0f    // A
         });
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);

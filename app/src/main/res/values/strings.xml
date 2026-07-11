@@ -556,8 +556,8 @@
     <string name="preference_camera2_photo_video_recording" translatable="false">Allow photos whilst recording video</string>
     <string name="preference_camera2_photo_video_recording_summary" translatable="false">Allows taking photos whilst recording videos. Disable this if there are problems with video recording with Camera2 API enabled on your device.</string>
 
-    <string name="preference_video_log" translatable="false">Video picture profiles</string>
-    <string name="preference_video_log_summary" translatable="false">Set standard or flat picture profile for video mode\n%s</string>
+    <string name="preference_video_log" translatable="false">Image profile</string>
+    <string name="preference_video_log_summary" translatable="false">Set standard or flat picture profile (applies to both photo and video)\n%s</string>
     <string name="preference_video_log_off" translatable="false">Default</string>
     <string name="preference_video_log_fine" translatable="false">Log (Fine)</string>
     <string name="preference_video_log_low" translatable="false">Log (Low)</string>
@@ -1055,6 +1055,9 @@
     <string name="preference_photo_optimise_focus_summary" translatable="false">When taking photos, whether to optimise for latency or quality. Only relevant when using continuous focus mode. Optimising for quality ensures that the scene is focused, but may result in a delay in taking photos.\n%s</string>
     <string name="preference_photo_optimise_focus_latency" translatable="false">Latency</string>
     <string name="preference_photo_optimise_focus_quality" translatable="false">Quality</string>
+	
+	<string name="preference_auto_hdr" translatable="false">Auto HDR</string>
+    <string name="preference_auto_hdr_summary" translatable="false">When enabled in Standard photo mode, if the metered ISO is less than or equal to 1100 the app automatically switches to the device\'s HDR camera extension for that shot (light scene, flash and manual focus become unavailable while it\'s active). Above that ISO, the camera stays in normal mode with flash available (Dark scene). Adds extra capture time on well-lit shots.</string>
 
     <string name="preference_save_preshots" translatable="false">Save preview shots</string>
     <string name="preference_save_preshots_summary" translatable="false">When enabled, a short video will be saved alongside each photo, containing shots from the moment before the photo was taken. Not supported for expo, focus bracketing or panorama modes.\n%s</string>

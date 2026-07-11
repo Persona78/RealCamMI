@@ -1341,6 +1341,7 @@ public class ImageSaver extends Thread {
 
             saveBaseImages(request, "_");
             main_activity.savingImage(true);
+            main_activity.getPreview().startProcessingTimerToast("NR");
 
             /*List<Bitmap> bitmaps = loadBitmaps(request.jpeg_images, 0);
             if (bitmaps == null) {
@@ -1504,6 +1505,7 @@ public class ImageSaver extends Thread {
                 Log.d(TAG, "nr_bitmap: " + nr_bitmap + " is mutable? " + nr_bitmap.isMutable());
             System.gc();
             main_activity.savingImage(false);
+            main_activity.getPreview().stopProcessingTimerToast();
 
             if( MyDebug.LOG )
                 Log.d(TAG, "save NR image");
@@ -1538,6 +1540,7 @@ public class ImageSaver extends Thread {
             if( MyDebug.LOG )
                 Log.d(TAG, "create HDR image");
             main_activity.savingImage(true);
+            main_activity.getPreview().startProcessingTimerToast("HDR");
 
             // see documentation for HDRProcessor.processHDR() - because we're using release_bitmaps==true, we need to make sure that
             // the bitmap that will hold the output HDR image is mutable (in case of options like photo stamp)
@@ -1550,6 +1553,7 @@ public class ImageSaver extends Thread {
                 if( MyDebug.LOG )
                     Log.e(TAG, "failed to load bitmaps");
                 main_activity.savingImage(false);
+                main_activity.getPreview().stopProcessingTimerToast();
                 return false;
             }
             if( MyDebug.LOG ) {
@@ -1559,6 +1563,7 @@ public class ImageSaver extends Thread {
             if( !processHDR(bitmaps, request, time_s) ) {
                 main_activity.getPreview().showToast(null, R.string.failed_to_process_hdr);
                 main_activity.savingImage(false);
+                main_activity.getPreview().stopProcessingTimerToast();
                 return false;
             }
 
@@ -1568,6 +1573,7 @@ public class ImageSaver extends Thread {
             bitmaps.clear();
             System.gc();
             main_activity.savingImage(false);
+            main_activity.getPreview().stopProcessingTimerToast();
 
             if( MyDebug.LOG )
                 Log.d(TAG, "save HDR image");
@@ -1672,6 +1678,7 @@ public class ImageSaver extends Thread {
             saveBaseImages(request, "_");
 
             main_activity.savingImage(true);
+            main_activity.getPreview().startProcessingTimerToast("Panorama");
 
             long time_s = System.currentTimeMillis();
 
@@ -1691,6 +1698,7 @@ public class ImageSaver extends Thread {
                 if( MyDebug.LOG )
                     Log.e(TAG, "failed to load bitmaps");
                 main_activity.savingImage(false);
+                main_activity.getPreview().stopProcessingTimerToast();
                 return false;
             }
             if( MyDebug.LOG ) {
@@ -1719,6 +1727,7 @@ public class ImageSaver extends Thread {
                     bitmaps.clear();
                     System.gc();
                     main_activity.savingImage(false);
+                    main_activity.getPreview().stopProcessingTimerToast();
                     return false;
                 }
                 else {
@@ -1735,6 +1744,7 @@ public class ImageSaver extends Thread {
             System.gc();
 
             main_activity.savingImage(false);
+            main_activity.getPreview().stopProcessingTimerToast();
 
             if( MyDebug.LOG )
                 Log.d(TAG, "save panorama image");

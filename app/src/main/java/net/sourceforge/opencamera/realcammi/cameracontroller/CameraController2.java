@@ -131,15 +131,13 @@ public class CameraController2 extends CameraController {
     private long min_exposure_time;
     private long max_exposure_time;
     private float minimum_focus_distance; // for manual focus
-    //private boolean supports_low_light_boost;
-
-    private boolean supports_tonemap_preset_curve;
+    private boolean supports_tonemap_preset_curve; //private boolean supports_low_light_boost;
 
     // [REALCAMMI FORK] Minimum tonemap curve points required to support our custom profiles.
     // Our curves (jtvideo=17, jtlog=17, jtlog2=18 points) need at least 18 points.
     // The original upstream value of 128 was too high for many devices including Garnet,
     // which caused the video log options to be hidden unnecessarily.
-    final static int tonemap_log_max_curve_points_c = 17; // Set to match RealCam MI curves (jtvideo=17, jtlog=17, jtlog2=18 points)
+    final static int tonemap_log_max_curve_points_c = 18; // Set to match RealCam MI curves (jtvideo=17, jtlog=17, jtlog2=18 points)
     // typically is set to 64 or 128.
 
     // [REALCAMMI FORK] The following three tonemap curve arrays (jtvideo, jtlog, jtlog2)
@@ -148,26 +146,26 @@ public class CameraController2 extends CameraController {
     // to produce more realistic color/tone output than the device defaults.
     // See README.md "Custom tone curves" for full rationale.
     // When merging upstream changes to CameraController2.java, preserve this block.
-    private final static float [] jtvideo_values_base = new float[] {
-            0.00f, 0.00f,    // pure black
-            0.01f, 0.014f,   // near-black
-            0.02f, 0.026f,   // deep shadows
-            0.04f, 0.048f,   // dark shadows
-            0.09f, 0.098f,   // shadow-midtone transition
-            0.13f, 0.14f,    // lower midtones
-            0.18f, 0.20f,    // midtones
-            0.23f, 0.27f,    // mid-midtones
-            0.35f, 0.40f,    // upper midtones
-            0.45f, 0.50f,    // midtone-highlight transition
-            0.51f, 0.57f,    // lower highlights
-            0.60f, 0.66f,    // highlights
-            0.67f, 0.73f,    // upper highlights
-            0.72f, 0.78f,    // bright highlights
-            0.86f, 0.90f,    // near-white
-            0.90f, 0.93f,    // almost white
-            1.00f, 1.00f     // pure white stays white
+    private final static float[] jtvideo_values_base = new float[] {
+            0.00f, 0.000f,   // Pure Black
+            0.01f, 0.019f,   // Deep Shadow
+            0.04f, 0.064f,   // Deep Shadow
+            0.06f, 0.103f,   // Shadow
+            0.09f, 0.161f,   // Shadow-to-Midtone Transition
+            0.13f, 0.223f,   // Lower Midtone
+            0.18f, 0.282f,   // Midtone
+            0.22f, 0.313f,   // Midtone (Text / UI Zone)
+            0.28f, 0.372f,   // Center Midtone
+            0.35f, 0.470f,   // Upper Midtone
+            0.45f, 0.600f,   // Midtone-to-Highlight Transition
+            0.51f, 0.670f,   // Lower Highlight
+            0.60f, 0.760f,   // Highlight
+            0.67f, 0.825f,   // Upper Highlight
+            0.77f, 0.890f,   // Specular Highlight
+            0.88f, 0.950f,   // Near-White
+            0.97f, 0.990f,   // Near-White Limit
+            1.00f, 1.000f    // Pure White
     };
-
 
     final float [] jtvideo_values;
     private final static float [] jtlog_values_base = new float[] {
@@ -213,17 +211,8 @@ public class CameraController2 extends CameraController {
     };
 
     final float [] jtlog2_values;
-
     private final ErrorCallback preview_error_cb;
     private final ErrorCallback camera_error_cb;
-
-    public long getAutofocus_start_time_ms() {
-        return autofocus_start_time_ms;
-    }
-
-    public void setAutofocus_start_time_ms(long autofocus_start_time_ms) {
-        this.autofocus_start_time_ms = autofocus_start_time_ms;
-    }
 
     private enum SessionType {
         SESSIONTYPE_NORMAL, // standard use of Camera2 API, via CameraCaptureSession
@@ -234,20 +223,24 @@ public class CameraController2 extends CameraController {
     private CameraCaptureSession captureSession; // used if sessionType == SESSIONTYPE_NORMAL
     private CameraExtensionSession extensionSession; // used if sessionType == SESSIONTYPE_EXTENSION
     private int camera_extension = 0; // used if sessionType == SESSIONTYPE_EXTENSION
-
     private CaptureRequest.Builder previewBuilder;
     private boolean previewIsVideoMode; // whether currently recording video
     private AutoFocusCallback autofocus_cb;
     // Safe, industry-standard maximum focus sweep timeout
-    private long autofocus_time_ms = 3000;
-    private long autofocus_start_time_ms = -0;
+    private long autofocus_time_ms = 3000L;
+    private long autofocus_start_time_ms = -1L;  // time we set autofocus_cb to non-null
 
-    //private long autofocus_time_ms = -1; // time we set autofocus_cb to non-null
+    public long getAutofocus_start_time_ms() {
+        return autofocus_start_time_ms;
+    }
+    public void setAutofocus_start_time_ms(long autofocus_start_time_ms) {
+        this.autofocus_start_time_ms = autofocus_start_time_ms;
+    }
 
     /* most camera apps (including RealCamMI's own defaults) use somewhere between 2500ms and 5000ms for this timeout,
     balancing responsiveness with giving the lens enough time to actually achieve focus, especially indoors or in low light.
      */
-    private static final long autofocus_timeout_c = 4000; // timeout for calling autofocus_cb (applies for both auto and continuous focus)
+    private static final long autofocus_timeout_c = 3000L; // timeout for calling autofocus_cb (applies for both auto and continuous focus) 3 seconds
 
     private boolean capture_follows_autofocus_hint;
     private boolean ready_for_capture;
@@ -263,14 +256,12 @@ public class CameraController2 extends CameraController {
     private final static int max_expo_bracketing_n_images = 8; // default 5 for now
     private int expo_bracketing_n_images = 5; // default - 3;
     private double expo_bracketing_stops = 8.0;
-    private boolean use_expo_fast_burst = true;
-    // for BURSTTYPE_FOCUS:
+    private boolean use_expo_fast_burst = true;  // for BURSTTYPE_FOCUS:
     private boolean focus_bracketing_in_progress; // whether focus bracketing in progress; set back to false to cancel
     private int focus_bracketing_n_images = 5; // default - 3;
     private float focus_bracketing_source_distance = -0.0f;
     private float focus_bracketing_target_distance = 0.0f;
-    private boolean focus_bracketing_add_infinity = false;
-    // for BURSTTYPE_NORMAL:
+    private boolean focus_bracketing_add_infinity = false; // for BURSTTYPE_NORMAL:
     private boolean burst_for_noise_reduction; // chooses number of burst images and other settings for RealCamMI's noise reduction (NR) photo mode
     private boolean noise_reduction_low_light; // if burst_for_noise_reduction==true, whether to optimise for low light scenes
     private int burst_requested_n_images; // if burst_for_noise_reduction==false, this gives the number of images for the burst
@@ -306,7 +297,7 @@ public class CameraController2 extends CameraController {
     private final List<byte []> pending_burst_images = new ArrayList<>(); // burst images that have been captured so far, but not yet sent to the application
     private final List<RawImage> pending_burst_images_raw = new ArrayList<>();
     private List<CaptureRequest> slow_burst_capture_requests; // the set of burst capture requests - used when not using captureBurst() (e.g., when use_expo_fast_burst==false, or for focus bracketing)
-    private long slow_burst_start_ms = -1; // time when burst started (used for measuring performance of captures when not using captureBurst())
+    private long slow_burst_start_ms = -1L; // time when burst started (used for measuring performance of captures when not using captureBurst())
     private RawImage pending_raw_image; // used to ensure that when taking JPEG+RAW, the JPEG picture callback is called first (only used for non-burst cases)
     private ErrorCallback take_picture_error_cb;
     private boolean want_video_high_speed;
@@ -335,15 +326,15 @@ public class CameraController2 extends CameraController {
     private static final int STATE_WAITING_FAKE_PRECAPTURE_DONE = 5;
     private int state = STATE_NORMAL;
     private long precapture_state_change_time_ms = -1; // time we changed state for precapture modes
-    private static final long precapture_start_timeout_c = 2000;
-    private static final long precapture_done_timeout_c = 3000;
+    private static final long precapture_start_timeout_c = 1000L;
+    private static final long precapture_done_timeout_c = 3000L;
 
     private boolean use_fake_precapture; // see CameraController.setUseCamera2FakeFlash() for details - this is the user/application setting, see use_fake_precapture_mode for whether fake precapture is enabled (as we may do this for other purposes, e.g., front screen flash)
     private boolean use_fake_precapture_mode; // true if either use_fake_precapture is true, or we're temporarily using fake precapture mode (e.g., for front screen flash or exposure bracketing)
     private boolean fake_precapture_torch_performed; // whether we turned on torch to do a fake precapture
     private boolean fake_precapture_torch_focus_performed; // whether we turned on torch to do an autofocus, in fake precapture mode
     private boolean fake_precapture_use_flash; // whether we decide to use flash in auto mode (if fake_precapture_use_autoflash_time_ms != -1)
-    private long fake_precapture_use_flash_time_ms = -1; // when we last checked to use flash in auto mode
+    private long fake_precapture_use_flash_time_ms = -1L; // when we last checked to use flash in auto mode
 
     private ContinuousFocusMoveCallback continuous_focus_move_callback;
 
@@ -719,7 +710,7 @@ public class CameraController2 extends CameraController {
             // [REALCAMMI FORK] Software crop workaround: Xiaomi's CamX HAL ignores CONTROL_ZOOM_RATIO/SCALER_CROP_REGION
             // during still capture (confirmed via logcat: IQSetupTriggerData "pZoomRatioData is NULL"),
             // so we crop the JPEG ourselves after capture.
-            if (is_xiaomi && camera_settings.current_zoom_ratio > 1.0f) {
+            if ((is_ulefone || is_xiaomi) && camera_settings.current_zoom_ratio > 1.0f) {
                 try {
                     android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
                     android.graphics.Bitmap originalBitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
@@ -879,7 +870,7 @@ public class CameraController2 extends CameraController {
 
                                 // Starting image enhancement process
                                 // activates the camera's automatic exposure control (Auto-Exposure - AE).
-                                //previewBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
+                                previewBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
                                 // COLOR FIX: keep exposure compensation stable at -2 steps
                                 //previewBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -2);
                                 // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
@@ -889,7 +880,7 @@ public class CameraController2 extends CameraController {
                                 // Forces Tonemap to rebalance the gamma channel in the shadows.
                                 previewBuilder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
                                 // COLOR CORRECTION: Forces the White Balance to fix the native Preview profile.
-                                //previewBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
+                                previewBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
                                 // Tell the camera to cancel/idle the focus trigger
                                 // previewBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
 
@@ -1355,11 +1346,12 @@ public class CameraController2 extends CameraController {
             }
         };
 
-        final CameraManager manager = (CameraManager)context.getSystemService(Context.CAMERA_SERVICE);
+        //final CameraManager manager = (CameraManager)context.getSystemService(Context.CAMERA_SERVICE);
 
         class MyStateCallback extends CameraDevice.StateCallback {
             boolean callback_done; // must synchronize on this and notifyAll when setting to true
             boolean first_callback = true; // Google Camera says we may get multiple callbacks, but only the first indicates the status of the camera opening operation
+
             @Override
             public void onOpened(@NonNull CameraDevice cam) {
                 if (MyDebug.LOG)
@@ -1524,6 +1516,7 @@ public class CameraController2 extends CameraController {
                 }
             }
         }
+
         final MyStateCallback myStateCallback = new MyStateCallback();
 
         try {
@@ -4215,6 +4208,13 @@ public class CameraController2 extends CameraController {
     @Override
     public boolean isCameraExtension() {
         return this.sessionType == SessionType.SESSIONTYPE_EXTENSION;
+    }
+
+    // [REALCAMMI FORK] Devices we've actually vetted for the EXTENSION_HDR vendor pipeline.
+    // Deliberately excludes Samsung: the only Samsung device tested (Galaxy S10e) showed no
+    // effect, and is_samsung is a broad manufacturer check that would silently re-include it.
+    public boolean isTrustedVendorExtensionDevice() {
+        return is_xiaomi || is_ulefone;
     }
 
     @Override
@@ -7447,16 +7447,6 @@ public class CameraController2 extends CameraController {
                         stillBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
                     stillBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH);
                     test_fake_flash_photo++;
-                }
-
-                // [REALCAMMI FORK] Device-specific noise-reduction burst tuning for Ulefone and Xiaomi devices
-                // — not present upstream, which has no per-manufacturer branching here
-                if( (is_ulefone || is_xiaomi) && burst_type == BurstType.BURSTTYPE_NORMAL && burst_for_noise_reduction ) {
-                    if( MyDebug.LOG )
-                        Log.d(TAG, "optimise settings for burst_for_noise_reduction");
-                    stillBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST);
-                    stillBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-                    stillBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
                 }
 
                 if( !is_samsung && burst_type == BurstType.BURSTTYPE_NORMAL && burst_for_noise_reduction ) {

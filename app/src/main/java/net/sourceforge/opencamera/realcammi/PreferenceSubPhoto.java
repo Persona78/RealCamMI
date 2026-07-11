@@ -39,6 +39,15 @@ public class PreferenceSubPhoto extends PreferenceSubScreen {
         if( MyDebug.LOG )
             Log.d(TAG, "cameraIdSPhysical: " + cameraIdSPhysical);
 
+        // [REALCAMMI FORK] needed for preference_video_log / preference_video_profile_gamma,
+        // moved here from PreferenceSubVideo.java (see below).
+        final boolean camera_open = bundle.getBoolean("camera_open");
+        if( MyDebug.LOG )
+            Log.d(TAG, "camera_open: " + camera_open);
+        final boolean supports_tonemap_curve = bundle.getBoolean("supports_tonemap_curve");
+        if( MyDebug.LOG )
+            Log.d(TAG, "supports_tonemap_curve: " + supports_tonemap_curve);
+
         final boolean using_android_l = bundle.getBoolean("using_android_l");
         if( MyDebug.LOG )
             Log.d(TAG, "using_android_l: " + using_android_l);
@@ -233,6 +242,22 @@ public class PreferenceSubPhoto extends PreferenceSubScreen {
             pg.removePreference(pref);
         }
 
+        // [REALCAMMI FORK] preference_video_log / preference_video_profile_gamma moved here from
+        // PreferenceSubVideo.java, since the tonemap curve applies to photo and video alike.
+        if( !supports_tonemap_curve && ( camera_open || sharedPreferences.getString(PreferenceKeys.VideoLogPreferenceKey, "off").equals("off") ) ) {
+            // if camera not open, we'll think this setting isn't supported - but should only remove
+            // this preference if it's set to the default (otherwise if user sets to a non-default
+            // value that causes camera to not open, user won't be able to put it back to the
+            // default!)
+            // (needed for Pixel 6 Pro where setting to sRGB causes camera to fail to open when in video mode)
+            PreferenceGroup pg2 = (PreferenceGroup)this.findPreference("preferences_root");
+            Preference pref2 = findPreference(PreferenceKeys.VideoLogPreferenceKey);
+            pg2.removePreference(pref2);
+
+            pref2 = findPreference(PreferenceKeys.VideoProfileGammaPreferenceKey);
+            pg2.removePreference(pref2);
+        }
+
         if( !supports_expo_bracketing || max_expo_bracketing_n_images <= 3 ) {
             Preference pref = findPreference("preference_expo_bracketing_n_images");
             //PreferenceGroup pg = (PreferenceGroup) this.findPreference("preference_screen_photo_settings");
@@ -297,7 +322,39 @@ public class PreferenceSubPhoto extends PreferenceSubScreen {
         MyPreferenceFragment.setSummary(findPreference("preference_exif_copyright"));
         MyPreferenceFragment.setSummary(findPreference("preference_textstamp"));
 
+        // [REALCAMMI FORK] moved from PreferenceSubVideo.java
+        setupImageProfileDependency();
+
         if( MyDebug.LOG )
             Log.d(TAG, "onCreate done");
+    }
+
+    // [REALCAMMI FORK] Sets up dependency for preference_video_profile_gamma on
+    // preference_video_log (enabled only when "gamma" is selected). Moved here from
+    // PreferenceSubVideo.java's setupDependencies()/setVideoProfileGammaDependency(), since both
+    // preferences now live in this screen.
+    private void setupImageProfileDependency() {
+        ListPreference pref = (ListPreference)findPreference("preference_video_log");
+        if( pref != null ) { // may be null if preference not supported
+            pref.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
+                @Override
+                public boolean onPreferenceChange(Preference arg0, Object newValue) {
+                    String value = newValue.toString();
+                    setImageProfileGammaDependency(value);
+                    return true;
+                }
+            });
+            setImageProfileGammaDependency(pref.getValue()); // ensure dependency is enabled/disabled as required for initial value
+        }
+    }
+
+    private void setImageProfileGammaDependency(String newValue) {
+        Preference dependent = findPreference("preference_video_profile_gamma");
+        if( dependent != null ) { // just in case
+            boolean enable_dependent = "gamma".equals(newValue);
+            if( MyDebug.LOG )
+                Log.d(TAG, "clicked image profile: " + newValue + " enable_dependent: " + enable_dependent);
+            dependent.setEnabled(enable_dependent);
+        }
     }
 }

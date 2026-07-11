@@ -17,6 +17,13 @@
         android:key="preference_photo_optimise_focus"
         android:summary="@string/preference_photo_optimise_focus_summary"
         android:title="@string/preference_photo_optimise_focus" />
+		
+	<CheckBoxPreference
+        android:key="preference_auto_hdr"
+        android:title="@string/preference_auto_hdr"
+        android:summary="@string/preference_auto_hdr_summary"
+        android:defaultValue="false"
+        />
 
     <ListPreference
         android:key="preference_save_preshots"
@@ -32,7 +39,7 @@
         android:key="preference_quality"
         android:title="@string/preference_quality"
         android:summary="@string/preference_quality_summary"
-        android:defaultValue="95"
+        android:defaultValue="90"
         />
 
     <ListPreference
@@ -63,13 +70,14 @@
         />
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
-
-    <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
-    <SwitchPreference
-        android:defaultValue="true"
+	<SwitchPreference
         android:key="preference_raw_focus_bracketing"
         android:summary="@string/preference_raw_focus_bracketing_summary"
-        android:title="@string/preference_raw_focus_bracketing" />
+        android:title="@string/preference_raw_focus_bracketing"
+        android:defaultValue="true"
+		/>
+		
+    <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
     <ListPreference
         android:key="preference_nr_save"
         android:title="@string/preference_nr_save"
@@ -107,24 +115,51 @@
         android:defaultValue="preference_hdr_contrast_enhancement_smart"
         />
 
+    <!-- [REALCAMMI FORK] Moved from preferences_sub_video.xml and renamed "Image profile": this
+         tonemap curve is applied to both photo and video captures (setupBuilder() in
+         Camera2Settings.java calls setTonemapProfile(builder) unconditionally), so it belongs
+         here rather than being video-only. Key names kept unchanged so existing user settings
+         are preserved across the update. -->
+    <!--  if we move this to another PreferenceGroup, we should update code for the findPreference() call -->
+    <ListPreference
+        android:key="preference_video_log"
+        android:title="@string/preference_video_log"
+        android:summary="@string/preference_video_log_summary"
+        android:entries="@array/preference_video_log_entries"
+        android:entryValues="@array/preference_video_log_values"
+        android:defaultValue="jtvideo"
+        />
+
+    <!--  if we move this to another PreferenceGroup, we should update code for the findPreference() call -->
+    <net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference
+        android:key="preference_video_profile_gamma"
+        android:title="@string/preference_video_profile_gamma"
+        android:summary="@string/preference_video_profile_gamma_summary"
+        android:entries="@array/preference_video_profile_gamma_entries"
+        android:entryValues="@array/preference_video_profile_gamma_values"
+        android:defaultValue="2.2"
+        />
+
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
     <ListPreference
-        android:defaultValue="5"
         android:entries="@array/preference_expo_bracketing_n_images_entries"
         android:entryValues="@array/preference_expo_bracketing_n_images_values"
         android:key="preference_expo_bracketing_n_images"
         android:summary="@string/preference_expo_bracketing_n_images_summary"
-        android:title="@string/preference_expo_bracketing_n_images" />
+        android:title="@string/preference_expo_bracketing_n_images"
+        android:defaultValue="5"
+		/>
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
     <ListPreference
-        android:defaultValue="3"
         android:entries="@array/preference_expo_bracketing_stops_entries"
         android:entryValues="@array/preference_expo_bracketing_stops_values"
         android:key="preference_expo_bracketing_stops"
         android:summary="@string/preference_expo_bracketing_stops_summary"
-        android:title="@string/preference_expo_bracketing_stops" />
+        android:title="@string/preference_expo_bracketing_stops"
+        android:defaultValue="3"
+		/>
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
     <ListPreference
@@ -258,7 +293,7 @@
             android:summary="@string/preference_stamp_fontsize_summary"
             android:entries="@array/preference_stamp_fontsize_entries"
             android:entryValues="@array/preference_stamp_fontsize_values"
-            android:defaultValue="12"
+            android:defaultValue="10"
             />
 
         <ListPreference

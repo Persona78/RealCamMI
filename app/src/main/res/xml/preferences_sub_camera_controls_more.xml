@@ -96,7 +96,7 @@
         android:dialogTitle="@string/preference_save_location"
         android:dialogMessage="@string/preference_save_location_summary"
         android:inputType="text"
-        android:defaultValue="OpenCamera"
+        android:defaultValue="RealCamMI"
         />
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
@@ -116,7 +116,7 @@
         android:summary="@string/preference_save_photo_prefix_summary"
         android:dialogMessage="@string/preference_save_photo_prefix_summary"
         android:inputType="text"
-        android:defaultValue="IMG_"
+        android:defaultValue="RLCI_"
         />
 
     <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
@@ -126,7 +126,7 @@
         android:summary="@string/preference_save_video_prefix_summary"
         android:dialogMessage="@string/preference_save_video_prefix_summary"
         android:inputType="text"
-        android:defaultValue="VID_"
+        android:defaultValue="RLCV_"
         />
 
     <ListPreference

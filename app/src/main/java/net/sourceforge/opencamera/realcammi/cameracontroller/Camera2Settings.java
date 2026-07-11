@@ -56,7 +56,7 @@ public class Camera2Settings {
     // Neutral light (3500K – 4500K)
     // Cool light (5000K – 6500K)
     // RealCamMI Default set to 5000
-    int white_balance_temperature = 4500; // used for white_balance == CONTROL_AWB_MODE_OFF
+    int white_balance_temperature = 5000; // used for white_balance == CONTROL_AWB_MODE_OFF
     String flash_value = "flash_off";
     boolean has_iso;
     //private int ae_mode = CameraMetadata.CONTROL_AE_MODE_ON;
@@ -74,7 +74,7 @@ public class Camera2Settings {
     boolean has_ae_exposure_compensation;
     int ae_exposure_compensation;
     boolean has_af_mode;
-    int af_mode = CaptureRequest.CONTROL_AF_MODE_AUTO;
+    int af_mode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
     float focus_distance; // actual value passed to camera device (set to 0.0 if in infinity mode)
     float focus_distance_manual; // saved setting when in manual mode (so if user switches to infinity mode and back, we'll still remember the manual focus distance)
     boolean ae_lock;
@@ -203,6 +203,16 @@ public class Camera2Settings {
         builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
         // Corrects chromatic aberrations (colored fringes) with the correct constant.
         builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+        // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
+        // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
+        // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
+        // own pipeline, showing up as a visible color blotch in a corner of the photo.
+        builder.set(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
+        // [REALCAMMI FORK] Uses the higher-precision color correction matrix computation instead of
+        // leaving COLOR_CORRECTION_MODE at the HAL default (typically FAST). Was only present in a
+        // dead/commented block upstream. Safe to set here (before setWhiteBalance()/manual WB logic
+        // below, which saves/restores whatever value is present on the builder at that point).
+        builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_HIGH_QUALITY);
         // Forces Tonemap to rebalance the gamma channel in the shadows.
         builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
@@ -231,7 +241,6 @@ public class Camera2Settings {
         setFaceDetectMode(builder);
         setRawMode(builder);
         setStabilization(builder);
-        setTonemapProfile(builder);
 
         if( is_still ) {
             if( location != null && !camera_controller.isExtensionSession() ) {
@@ -246,6 +255,18 @@ public class Camera2Settings {
 
         setEdgeMode(builder);
         setNoiseReductionMode(builder);
+        // [REALCAMMI FORK BUGFIX] setTonemapProfile() moved to run AFTER setEdgeMode()/
+        // setNoiseReductionMode() (was called right after setStabilization(), before the is_still
+        // block, i.e. before these two). setTonemapProfile()'s own comment says its forced
+        // EDGE_MODE_OFF / NOISE_REDUCTION_MODE_MINIMAL (for a clean log/flat pipeline) should
+        // "always be in effect... regardless of what the user has selected" whenever there's no
+        // explicit user preference — but with the old order, setEdgeMode()/setNoiseReductionMode()
+        // ran afterwards and could silently revert that override back to a stale saved default
+        // (has_default_edge_mode/has_default_noise_reduction_mode are never reset to false once
+        // set, so this could fire long after the explicit preference that originally set them was
+        // cleared). Running setTonemapProfile() last makes it the actual final word, matching what
+        // its own comment already claimed.
+        setTonemapProfile(builder);
 
             /*builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
             builder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
@@ -417,9 +438,9 @@ public class Camera2Settings {
             // correction tweak, not a pure identity passthrough. TODO: confirm intended values.
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
-                            10, 10,   0, 10,  -0, 10, // Red 1.0
-                            1, 10,  10, 10,  -1, 10, // Green 1.0
-                            -2, 10,  -3, 10,  15, 10  // Blue 1.0
+                            16, 10,  -1, 10,   0, 10, // Red 1.6
+                            -1, 10,  14, 10,   0, 10, // Green 1.4
+                            0, 10,  -1, 10,  12, 10  // Blue 1.2
                     });
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
             changed = true;
@@ -461,6 +482,16 @@ public class Camera2Settings {
                 if( MyDebug.LOG )
                     Log.d(TAG, "default_edge_mode: " + default_edge_mode);
             }
+
+            // [REALCAMMI FORK BUGFIX] Removed an "ANTI-BLACK SCREEN FIX" block that used to sit
+            // here: it reverted COLOR_CORRECTION_MODE from TRANSFORM_MATRIX back to HIGH_QUALITY
+            // whenever this function ran with an active edge mode. Since setEdgeMode() runs after
+            // setWhiteBalance() in setupBuilder(), this silently discarded the manual CCM every
+            // single time — COLOR_CORRECTION_MODE is setWhiteBalance()'s concern, not this
+            // function's. If the black-screen crash this was guarding against resurfaces, it
+            // should be fixed at the source (in setWhiteBalance(), or gated to the specific
+            // device it was needed for) rather than reverted unconditionally here.
+
             if( builder.get(CaptureRequest.EDGE_MODE) == null || builder.get(CaptureRequest.EDGE_MODE) != edge_mode ) {
                 if( MyDebug.LOG )
                     Log.d(TAG, "setting edge_mode: " + edge_mode);
@@ -472,15 +503,25 @@ public class Camera2Settings {
                     Log.d(TAG, "edge_mode was already set: " + edge_mode);
             }
         }
+
         else if( is_samsung_s7 ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "set EDGE_MODE_OFF");
             // see https://sourceforge.net/p/opencamera/discussion/general/thread/48bd836b/ ,
             // https://stackoverflow.com/questions/36028273/android-camera-api-glossy-effect-on-galaxy-s7
-            // need EDGE_MODE_OFF to avoid a "glow" effect
-            // On Ulefone Armor 25T Edge ON Fix Sharpness and "Worm" Artifacts
             builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
         }
+
+        else if( is_xiaomi ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "set EDGE_MODE_OFF (xiaomi)");
+            // [REALCAMMI FORK] Confirmed empirically by the user: on Xiaomi (garnet),
+            // EDGE_MODE_HIGH_QUALITY produces better image quality than FAST/OFF. Forced
+            // explicitly instead of leaving it to the still-capture template default
+            // (opaque, CamX-build-dependent behavior).
+            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
+        }
+
         else if( has_default_edge_mode ) {
             if( builder.get(CaptureRequest.EDGE_MODE) != null && !builder.get(CaptureRequest.EDGE_MODE).equals(default_edge_mode) ) {
                 builder.set(CaptureRequest.EDGE_MODE, default_edge_mode);
@@ -527,6 +568,17 @@ public class Camera2Settings {
             // need NOISE_REDUCTION_MODE_OFF to avoid excessive blurring
             // Avoid excessive blurring on Ulefone Armor 25T
             builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+        }
+
+        else if( is_xiaomi ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "set NOISE_REDUCTION_MODE_MINIMAL (xiaomi)");
+            // [REALCAMMI FORK] `is_xiaomi` was calculated but never actually used here — the CamX HAL
+            // would default to the still-capture template (potentially HIGH_QUALITY),
+            // stacking with the app's bilateral NR. MINIMAL retains hot-pixel correction
+            // (relevant for the 200MP HP3 sensor at high ISO) and leaves all luminance/chroma
+            // smoothing to the bilateral filter tunable in PostProcessing.java.
+            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL);
         }
 
         else if( has_default_noise_reduction_mode ) {
@@ -576,7 +628,7 @@ public class Camera2Settings {
                 Log.d(TAG, "iso: " + iso);
                 Log.d(TAG, "exposure_time: " + exposure_time);
             }
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON); //default OFF
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
             long actual_exposure_time = exposure_time;
             if( !is_still ) {
@@ -868,7 +920,7 @@ public class Camera2Settings {
     private float getSlog3Profile(float in) {
         in = in * 0.90f; // Darkens the image by ~10% BEFORE the Log calculation
         //
-        //Log calculation
+        //Log calculationNo video picture profile em definições de video
         float out;
         if( in >= 0.01125000f ) {
             // Logarithmic segment: compress highlights and preserve mid-tone detail

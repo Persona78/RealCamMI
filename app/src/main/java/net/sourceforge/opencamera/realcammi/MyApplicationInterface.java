@@ -58,6 +58,7 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowMetrics;
 import android.widget.ImageButton;
+import android.app.ActivityManager;
 
 import androidx.annotation.RequiresApi;
 
@@ -157,7 +158,8 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     private String cameraIdSPhysical = null; // if non-null, this is the ID string for a physical camera, undlerying the logical cameraId
     private final static String nr_mode_default = "preference_nr_mode_normal";
     private String nr_mode = nr_mode_default;
-    private final static float aperture_default = -1.0f;
+    private final static float aperture_default = -1.0f; //The -1.0f tells the code to ignore manual settings and inherit the native metadata (Exif)
+    // coming directly from the camera hardware.
     private float aperture = aperture_default;
     // camera properties that aren't saved even in the bundle; these should be initialised/reset in reset()
     private int zoom_factor = -1; // don't save zoom, as doing so tends to confuse users; other camera applications don't seem to save zoom when pause/resuming
@@ -615,13 +617,28 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             // set a maximum resolution for modes that require decompressing multiple images for processing,
             // due to risk of running out of memory!
             constraints.has_max_mp = true;
-            constraints.max_mp = 18000000; // max of 18MP
-            //constraints.max_mp = 7800000; // test!
+            //constraints.max_mp = 18000000; // max of 18MP
+            // [REALCAMMI FORK] Adapt the ceiling to the device's total RAM instead of one fixed
+            // value, so devices with more memory headroom aren't needlessly capped, and low-RAM
+            // devices get a safer ceiling than a flat 12MP would give them.
+            ActivityManager actManager = (ActivityManager) main_activity.getSystemService(Context.ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo memInfo = new ActivityManager.MemoryInfo();
+            actManager.getMemoryInfo(memInfo);
+            long totalRamGb = memInfo.totalMem / (1024L * 1024L * 1024L);
+            if( totalRamGb <= 4 ) {
+                constraints.max_mp = 8000000; // low RAM: 8MP ceiling
+            }
+            else if( totalRamGb <= 8 ) {
+                constraints.max_mp = 12000000; // mid-range RAM: 12MP ceiling (o valor fixo que tinhas)
+            }
+            else {
+                constraints.max_mp = 24000000; // high RAM: 24MP ceiling
+            }
+            //constraints.max_mp = 7800000; // test! max of 8MP
             if( main_activity.is_test && test_max_mp != 0 ) {
                 constraints.max_mp = test_max_mp;
             }
         }
-
         return result;
     }
 
@@ -648,7 +665,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             // the thumbnail and pause preview option
             if( MyDebug.LOG )
                 Log.d(TAG, "set lower quality for raw_only mode");
-            image_quality = Math.min(image_quality, 85);
+            image_quality = Math.min(image_quality, 90);
         }
         return image_quality;
     }
@@ -1034,7 +1051,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         VideoMaxFileSize video_max_filesize = new VideoMaxFileSize();
         video_max_filesize.max_filesize = getVideoMaxFileSizeUserPref();
         video_max_filesize.auto_restart = getVideoRestartMaxFileSizeUserPref();
-		
+
 		/* Try to set the max filesize so we don't run out of space.
 		   If using SD card without storage access framework, it's not reliable to get the free storage
 		   (see https://sourceforge.net/p/opencamera/tickets/153/ ).
@@ -1290,7 +1307,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
      *  COLOR_CORRECTION_TRANSFORM, since that field is ignored by the HAL when AWB is in AUTO mode.
      */
     public boolean getColorCorrectionPref() {
-        return sharedPreferences.getBoolean(PreferenceKeys.ColorCorrectionPreferenceKey, false);
+        return sharedPreferences.getBoolean(PreferenceKeys.ColorCorrectionPreferenceKey, true);
     }
 
     // [REALCAMMI FORK] OpenCV post-processing getters
@@ -1299,11 +1316,15 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     }
 
     public boolean getOpenCVNRPref() {
-        return sharedPreferences.getBoolean(PreferenceKeys.OpenCVNRPreferenceKey, false);
+        return sharedPreferences.getBoolean(PreferenceKeys.OpenCVNRPreferenceKey, true);
     }
 
     public boolean getOpenCVCLAHEPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.OpenCVCLAHEPreferenceKey, false);
+    }
+
+    public boolean getAutoHDRPref() {
+        return sharedPreferences.getBoolean(PreferenceKeys.AutoHDRPreferenceKey, false);
     }
 
     public boolean getOpenCVBlurDetectPref() {
@@ -1356,8 +1377,8 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     }
 
     private int getTextStampFontSizePref() {
-        int font_size = 12;
-        String value = sharedPreferences.getString(PreferenceKeys.StampFontSizePreferenceKey, "12");
+        int font_size = 10;
+        String value = sharedPreferences.getString(PreferenceKeys.StampFontSizePreferenceKey, "10");
         if( MyDebug.LOG )
             Log.d(TAG, "saved font size: " + value);
         try {
@@ -1498,8 +1519,8 @@ public class MyApplicationInterface extends BasicApplicationInterface {
                 Log.d(TAG, "canTakeNewPhoto: no, as too many for pause preview");
             return false;
         }
-        // otherwise, still have a max limit of 5 photos
-        if( n_images_to_save >= 5*photo_cost ) {
+        // otherwise, still have a max limit of 8 photos
+        if( n_images_to_save >= 8*photo_cost ) {
             if( main_activity.supportsNoiseReduction() && n_images_to_save <= 8 ) {
                 // if we take a photo in NR mode, then switch to std mode, it doesn't make sense to suddenly block!
                 // so need to at least allow a new photo, if the number of photos is less than 1 NR photo

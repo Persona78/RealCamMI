@@ -5,6 +5,8 @@ import net.sourceforge.opencamera.realcammi.JavaImageFunctionsPreview;
 import net.sourceforge.opencamera.realcammi.JavaImageProcessing;
 import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
 //import net.sourceforge.opencamera.realcammi.MainActivity;
+import net.sourceforge.opencamera.realcammi.HDRProcessor;
+import net.sourceforge.opencamera.realcammi.MyApplicationInterface;
 import net.sourceforge.opencamera.realcammi.MyDebug;
 import net.sourceforge.opencamera.realcammi.R;
 import net.sourceforge.opencamera.realcammi.TakePhoto;
@@ -71,6 +73,7 @@ import android.os.Build;
 import android.os.Bundle;
 //import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 
 import androidx.annotation.NonNull;
@@ -258,6 +261,12 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private TimerTask batteryCheckVideoTimerTask;
     private long take_photo_time; // if taking photo on timer, planned time when we'll take the photo
     private long last_take_photo_time = -1; // last time we called takePhoto()
+    private boolean pending_auto_hdr_capture = false; // [REALCAMMI FORK] true if we reopened the camera specifically to retry a photo in Auto HDR extension mode
+    private boolean want_auto_hdr_extension_now = false; // [REALCAMMI FORK] true while the pending/in-progress Auto HDR capture wants the extension session forced on
+    private Handler processing_timer_handler; // [REALCAMMI FORK] drives the repeating "still processing" toast
+    private Runnable processing_timer_runnable;
+    private long processing_timer_start_time;
+    private String processing_timer_label;
     private int remaining_repeat_photos;
     private int remaining_restart_video;
 
@@ -827,7 +836,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 has_smooth_zoom = true;
                 smooth_zoom = zoom_ratios.get(multitouch_start_zoom_factor)/100.0f;
             }
-             else {
+            else {
                 has_multitouch_start_zoom_factor = false;
                 multitouch_start_zoom_factor = 0;
                 has_smooth_zoom = false;
@@ -2000,6 +2009,12 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                     if( using_android_l ) {
                         configureTransform();
                     }
+                    if( pending_auto_hdr_capture ) {
+                        pending_auto_hdr_capture = false;
+                        if( MyDebug.LOG )
+                            Log.d(TAG, "Auto HDR: reopened in HDR extension mode, retrying photo");
+                        takePhoto(false, false);
+                    }
                 }
             });
         }
@@ -2137,8 +2152,13 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
         }
 
         // seems sensible to set extension mode (or not) first
-        if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && this.supported_extensions != null && applicationInterface.isCameraExtensionPref() ) {
-            int extension = applicationInterface.getCameraExtensionPref();
+        boolean use_extension_for_auto_hdr = want_auto_hdr_extension_now && this.supported_extensions != null
+                && this.supported_extensions.contains(CameraExtensionCharacteristics.EXTENSION_HDR);
+        if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && this.supported_extensions != null
+                && ( applicationInterface.isCameraExtensionPref() || use_extension_for_auto_hdr ) ) {
+            int extension = ( use_extension_for_auto_hdr && !applicationInterface.isCameraExtensionPref() )
+                    ? CameraExtensionCharacteristics.EXTENSION_HDR
+                    : applicationInterface.getCameraExtensionPref();
             if( this.supported_extensions.contains(extension) ) {
                 camera_controller.setCameraExtension(true, extension);
 
@@ -2756,7 +2776,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                                             /*if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA )
                                                 Preview.this.getView().setStateDescription(string_f);
                                             else*/
-                                                Preview.this.getView().announceForAccessibility(string_f);
+                                            Preview.this.getView().announceForAccessibility(string_f);
                                         }
                                     }, 500);
                                 }
@@ -3234,7 +3254,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 if( MyDebug.LOG )
                     Log.d(TAG, "check if we need high speed video for " + profile.videoFrameWidth + " x " + profile.videoFrameHeight + " at fps capture rate " + capture_rate);
                 CameraController.Size best_video_size = video_quality_handler.findVideoSizeForFrameRate(profile.videoFrameWidth, profile.videoFrameHeight, capture_rate, false);
-                    // n.b., we should pass videoCaptureRate (capture_rate) and not videoFrameRate (as for slow motion, it's videoCaptureRate that will be high, not videoFrameRate)
+                // n.b., we should pass videoCaptureRate (capture_rate) and not videoFrameRate (as for slow motion, it's videoCaptureRate that will be high, not videoFrameRate)
 
                 if( best_video_size == null && fpsIsHighSpeed(String.valueOf(capture_rate)) && video_quality_handler.getSupportedVideoSizesHighSpeed() != null ) {
                     Log.e(TAG, "can't find match for capture rate: " + capture_rate + " and video size: " + profile.videoFrameWidth + " x " + profile.videoFrameHeight + " at fps " + profile.videoFrameRate);
@@ -3851,18 +3871,18 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 // leave others at default
                 break;
             case "preference_video_output_format_webm":
-                {
-                    // n.b., audio isn't recorded on any device I've tested with WEBM, seems this may
-                    // not be supported yet, see:
-                    // https://developer.android.com/guide/topics/media/media-formats#audio-formats
-                    // https://stackoverflow.com/questions/42857584/recording-webm-with-android-mediarecorder
-                    video_profile.fileFormat = MediaRecorder.OutputFormat.WEBM;
-                    video_profile.videoCodec = MediaRecorder.VideoEncoder.VP8;
-                    video_profile.audioCodec = MediaRecorder.AudioEncoder.VORBIS;
-                    video_profile.fileExtension = "webm";
-                }
-                // else treat as default
-                break;
+            {
+                // n.b., audio isn't recorded on any device I've tested with WEBM, seems this may
+                // not be supported yet, see:
+                // https://developer.android.com/guide/topics/media/media-formats#audio-formats
+                // https://stackoverflow.com/questions/42857584/recording-webm-with-android-mediarecorder
+                video_profile.fileFormat = MediaRecorder.OutputFormat.WEBM;
+                video_profile.videoCodec = MediaRecorder.VideoEncoder.VP8;
+                video_profile.audioCodec = MediaRecorder.AudioEncoder.VORBIS;
+                video_profile.fileExtension = "webm";
+            }
+            // else treat as default
+            break;
             default:
                 // treat as default
                 Log.e(TAG, "unknown pref_video_output_format: " + pref_video_output_format);
@@ -6668,6 +6688,13 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 if( MyDebug.LOG )
                     Log.d(TAG, "onCompleted");
                 applicationInterface.onPictureCompleted();
+                if( want_auto_hdr_extension_now ) {
+                    want_auto_hdr_extension_now = false;
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "Auto HDR: capture done, reopening back to normal session");
+                    stopProcessingTimerToast();
+                    reopenCamera();
+                }
                 if( !using_android_l ) {
                     //is_preview_started = false; // preview automatically stopped due to taking photo on original Camera API
                     preview_started_state = PREVIEW_NOT_STARTED; // preview automatically stopped due to taking photo on original Camera API
@@ -6829,6 +6856,22 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 applicationInterface.cameraInOperation(false, false);
             }
         };
+
+        if( applicationInterface instanceof MyApplicationInterface
+                && ((MyApplicationInterface) applicationInterface).getAutoHDRPref() && !camera_controller.isCameraExtension()
+                && ((MyApplicationInterface) applicationInterface).getPhotoMode() == MyApplicationInterface.PhotoMode.Standard
+                && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime()
+                && !HDRProcessor.sceneIsLowLight(camera_controller.captureResultIso(), camera_controller.captureResultExposureTime())
+                && supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_HDR) ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "Auto HDR: bright scene detected, reopening in HDR extension mode before capture");
+            pending_auto_hdr_capture = true;
+            want_auto_hdr_extension_now = true;
+            startProcessingTimerToast("Auto HDR");
+            reopenCamera();
+            return; // retry happens automatically once the reopened preview signals ready
+        }
+
         {
             camera_controller.setRotation(getImageVideoRotation());
 
@@ -7733,9 +7776,11 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
      * https://developer.android.com/reference/android/hardware/camera2/CameraExtensionCharacteristics ).
      */
     public boolean supportsCameraExtension(int extension) {
-        if( extension == CameraExtensionCharacteristics.EXTENSION_HDR ) {
-            // blocked for now, as have yet to be able to test this (seems to have no effect on Galaxy S10e;
-            // not available on Pixel 6 Pro or Galaxy S24+)
+        if( extension == CameraExtensionCharacteristics.EXTENSION_HDR
+                && !( camera_controller instanceof CameraController2 && ((CameraController2) camera_controller).isTrustedVendorExtensionDevice() ) ) {
+            // [REALCAMMI FORK] Only allow EXTENSION_HDR on devices we've specifically vetted
+            // (Xiaomi/Ulefone). Previously blocked unconditionally: had no effect on Galaxy S10e,
+            // not available on Pixel 6 Pro or Galaxy S24+, and never actually tested elsewhere.
             return false;
         }
         return this.supported_extensions != null && this.supported_extensions.contains(extension);
@@ -7770,8 +7815,8 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     /** Returns the horizontal angle of view in degrees (when unzoomed).
      */
     public float getViewAngleX(boolean for_preview) {
-		if( MyDebug.LOG )
-			Log.d(TAG, "getViewAngleX: " + for_preview);
+        if( MyDebug.LOG )
+            Log.d(TAG, "getViewAngleX: " + for_preview);
         CameraController.Size size = for_preview ? this.getCurrentPreviewSize() : this.getCurrentPictureSize();
         if( size == null ) {
             Log.e(TAG, "can't find view angle x size");
@@ -7804,8 +7849,8 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     /** Returns the vertical angle of view in degrees (when unzoomed).
      */
     public float getViewAngleY(boolean for_preview) {
-		if( MyDebug.LOG )
-			Log.d(TAG, "getViewAngleY: " + for_preview);
+        if( MyDebug.LOG )
+            Log.d(TAG, "getViewAngleY: " + for_preview);
         CameraController.Size size = for_preview ? this.getCurrentPreviewSize() : this.getCurrentPictureSize();
         if( size == null ) {
             Log.e(TAG, "can't find view angle y size");
@@ -8159,6 +8204,33 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 }
             }
         });
+    }
+
+    // [REALCAMMI FORK] Generic elapsed-time toast for operations with no native progress
+    // reporting (classic HDR/NR merge, Panorama stitch, Auto HDR camera reopen). Updates the
+    // same toast once a second so the user knows the app hasn't frozen.
+    public void startProcessingTimerToast(final String label) {
+        stopProcessingTimerToast();
+        this.processing_timer_label = label;
+        this.processing_timer_start_time = System.currentTimeMillis();
+        if( this.processing_timer_handler == null )
+            this.processing_timer_handler = new Handler(Looper.getMainLooper());
+        this.processing_timer_runnable = new Runnable() {
+            @Override
+            public void run() {
+                long elapsed_s = (System.currentTimeMillis() - processing_timer_start_time) / 1000;
+                showToast(null, processing_timer_label + "... " + elapsed_s + "s", true, true);
+                processing_timer_handler.postDelayed(this, 1000);
+            }
+        };
+        this.processing_timer_handler.post(this.processing_timer_runnable);
+    }
+
+    public void stopProcessingTimerToast() {
+        if( this.processing_timer_handler != null && this.processing_timer_runnable != null ) {
+            this.processing_timer_handler.removeCallbacks(this.processing_timer_runnable);
+            this.processing_timer_runnable = null;
+        }
     }
 
     public void showToast(final ToastBoxer clear_toast, final int message_id) {

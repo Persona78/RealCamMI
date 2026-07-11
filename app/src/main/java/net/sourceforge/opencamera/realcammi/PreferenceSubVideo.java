@@ -139,22 +139,9 @@ public class PreferenceSubVideo extends PreferenceSubScreen {
             lp.setKey(fps_preference_key);
         }
 
-        if( !supports_tonemap_curve && ( camera_open || sharedPreferences.getString(PreferenceKeys.VideoLogPreferenceKey, "off").equals("off") ) ) {
-            // if camera not open, we'll think this setting isn't supported - but should only remove
-            // this preference if it's set to the default (otherwise if user sets to a non-default
-            // value that causes camera to not open, user won't be able to put it back to the
-            // default!)
-            // (needed for Pixel 6 Pro where setting to sRGB causes camera to fail to open when in video mode)
-            Preference pref = findPreference(PreferenceKeys.VideoLogPreferenceKey);
-            //PreferenceGroup pg = (PreferenceGroup)this.findPreference("preference_screen_video_settings");
-            PreferenceGroup pg = (PreferenceGroup)this.findPreference("preferences_root");
-            pg.removePreference(pref);
-
-            pref = findPreference(PreferenceKeys.VideoProfileGammaPreferenceKey);
-            //pg = (PreferenceGroup)this.findPreference("preference_screen_video_settings");
-            pg = (PreferenceGroup)this.findPreference("preferences_root");
-            pg.removePreference(pref);
-        }
+        // [REALCAMMI FORK] preference_video_log / preference_video_profile_gamma moved to
+        // PreferenceSubPhoto.java (renamed "Image profile" there); their supports_tonemap_curve
+        // removal logic moved there too.
 
         if( !supports_video_stabilization ) {
             Preference pref = findPreference("preference_video_stabilization");
@@ -194,25 +181,14 @@ public class PreferenceSubVideo extends PreferenceSubScreen {
      *  on the device (e.g., Android version).
      */
     private void setupDependencies() {
-        // set up dependency for preference_video_profile_gamma on preference_video_log
-        ListPreference pref = (ListPreference)findPreference("preference_video_log");
-        if( pref != null ) { // may be null if preference not supported
-            pref.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
-                @Override
-                public boolean onPreferenceChange(Preference arg0, Object newValue) {
-                    String value = newValue.toString();
-                    setVideoProfileGammaDependency(value);
-                    return true;
-                }
-            });
-            setVideoProfileGammaDependency(pref.getValue()); // ensure dependency is enabled/disabled as required for initial value
-        }
+        // [REALCAMMI FORK] preference_video_profile_gamma dependency on preference_video_log
+        // moved to PreferenceSubPhoto.java, alongside the preferences themselves.
 
         if( !MyApplicationInterface.mediastoreSupportsVideoSubtitles() ) {
             // video subtitles only supported with SAF on Android 11+
             // since these preferences are entirely in separate sub-screens (and one isn't the parent of the other), we don't need
             // a dependency (and indeed can't use one, as the preference_using_saf won't exist here as a Preference)
-            pref = (ListPreference)findPreference("preference_video_subtitle");
+            ListPreference pref = (ListPreference)findPreference("preference_video_subtitle");
             if( pref != null ) {
                 boolean using_saf = false;
                 // n.b., not safe to call main_activity.getApplicationInterface().getStorageUtils().isUsingSAF() if fragment
@@ -234,16 +210,6 @@ public class PreferenceSubVideo extends PreferenceSubScreen {
                     pref.setEnabled(false);
                 }
             }
-        }
-    }
-
-    private void setVideoProfileGammaDependency(String newValue) {
-        Preference dependent = findPreference("preference_video_profile_gamma");
-        if( dependent != null ) { // just in case
-            boolean enable_dependent = "gamma".equals(newValue);
-            if( MyDebug.LOG )
-                Log.d(TAG, "clicked video log: " + newValue + " enable_dependent: " + enable_dependent);
-            dependent.setEnabled(enable_dependent);
         }
     }
 }

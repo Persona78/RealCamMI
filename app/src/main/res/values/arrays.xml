@@ -580,6 +580,7 @@
         <item>@string/preference_video_profile_gamma_2_8</item>
     </string-array>
     <string-array name="preference_video_profile_gamma_values">
+        <item>0.0</item>
         <item>1.6</item>
         <item>1.8</item>
         <item>1.9</item>

@@ -131,11 +131,18 @@ public class PreferenceKeys {
 
     // [REALCAMMI FORK] OpenCV post-processing features
     public static final String OpenCVSharpenPreferenceKey   = "preference_opencv_sharpen";
+
     public static final String OpenCVNRPreferenceKey        = "preference_opencv_nr";
+
     public static final String OpenCVCLAHEPreferenceKey     = "preference_opencv_clahe";
+
     public static final String OpenCVBlurDetectPreferenceKey = "preference_opencv_blur_detect";
 
+
     public static final String PhotoModePreferenceKey = "preference_photo_mode";
+
+    public static final String AutoHDRPreferenceKey = "preference_auto_hdr";
+
 
     public static final String HDRSaveExpoPreferenceKey = "preference_hdr_save_expo";
 
