@@ -440,7 +440,7 @@ public class Camera2Settings {
                     {
                             16, 10,  -1, 10,   0, 10, // Red 1.6
                             -1, 10,  14, 10,   0, 10, // Green 1.4
-                            0, 10,  -1, 10,  12, 10  // Blue 1.2
+                            0, 10,  -1, 10,  13, 10  // Blue 1.3
                     });
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
             changed = true;
