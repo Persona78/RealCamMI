@@ -638,14 +638,13 @@ public class PostProcessing {
      *  [REALCAMMI FORK] Tile grid is now scaled to image resolution instead of a
      *  fixed 8x8: on a 12MP+ photo, 8x8 gives ~510x382px tiles, far too coarse to
      *  recover fine local contrast (e.g. sand/water sparkle). Target ~256px tiles instead.
-     *  [REALCAMMI FORK] Also applies a chroma (a/b) compensation boost, weighted by local
-     *  brightness, to counteract the saturation loss caused by the Camera2 TonemapCurve
-     *  being applied identically to R, G and B (TonemapCurve has no luma-only mode — this
-     *  is an API constraint, not something fixable in the curve itself). Desaturation from
-     *  that mechanism is concentrated in the highlight range, so the boost scales with L.
-     *  clipLimit=3.0 (raised from 2.0 to compensate for the finer/smaller tiles — OpenCV's
-     *  effective clip limit scales with tile pixel area, so smaller tiles need a higher
-     *  nominal clipLimit to give a similar contrast punch as before).
+     *  clipLimit=2.0: raising the tile grid density alone (above) already gives a stronger
+     *  contrast punch than the original fixed 8x8 grid, so clipLimit was kept moderate
+     *  rather than also raised to 3.0 — 3.0 was tried and found too strong/exaggerated
+     *  on real shots once combined with the finer tile grid.
+     *  Note: the a/b chroma compensation that used to live in this function has moved to
+     *  its own applyTonemapDesaturationCompensation(), which runs unconditionally on every
+     *  photo regardless of this CLAHE toggle — see that method for the rationale.
      */
     private Bitmap applyOpenCVCLAHE(Bitmap bitmap) {
         if( MyDebug.LOG )
@@ -683,14 +682,78 @@ public class PostProcessing {
             l_orig.release();
             channels.set(0, l_enhanced);
 
-            // [REALCAMMI FORK] chroma compensation: boost a/b around their neutral point
-            // (128 in OpenCV's 8-bit Lab), scaled by local brightness (0..1 range of L).
-            // boost = 1.0 + 0.35*L: no change in shadows, up to +35% chroma in highlights,
-            // where the TonemapCurve-induced desaturation is strongest.
+            // [REALCAMMI FORK NOTE] the a/b chroma compensation that used to live here was
+            // moved into its own applyTonemapDesaturationCompensation(), which now runs
+            // unconditionally in postProcessBitmap() regardless of whether this CLAHE toggle
+            // is on — see that method for the full rationale. This function now only does the
+            // L-channel local contrast enhancement CLAHE was originally meant for.
+
+            // Merge back and convert to RGBA
+            Mat lab_enhanced = new Mat();
+            Core.merge(channels, lab_enhanced);
+            Mat bgr_enhanced = new Mat();
+            Imgproc.cvtColor(lab_enhanced, bgr_enhanced, Imgproc.COLOR_Lab2BGR);
+            Mat result_rgba = new Mat();
+            Imgproc.cvtColor(bgr_enhanced, result_rgba, Imgproc.COLOR_BGR2RGBA);
+            Utils.matToBitmap(result_rgba, bitmap);
+
+            src.release();
+            bgr.release();
+            lab.release();
+            for(Mat ch : channels) ch.release();
+            // [REALCAMMI FORK BUGFIX] l_enhanced is channels.get(0) (set at the line above),
+            // already released by the loop just above — releasing it again here was a
+            // double-free of the same native Mat (undefined behaviour in OpenCV's native
+            // layer, can corrupt state for the *next* OpenCV call in the pipeline, e.g.
+            // applyOpenCVSharpen running right after this one).
+            lab_enhanced.release();
+            bgr_enhanced.release();
+            result_rgba.release();
+        } catch(Exception e) {
+            if( MyDebug.LOG )
+                Log.e(TAG, "applyOpenCVCLAHE failed: " + e.getMessage());
+        }
+        return bitmap;
+    }
+
+    /** [REALCAMMI FORK] Compensates for the saturation loss caused by the Camera2
+     *  TonemapCurve being applied identically to R, G and B (TonemapCurve has no luma-only
+     *  mode — an API constraint, not something fixable in the curve itself). Desaturation
+     *  from that mechanism is concentrated in the highlight range, so the boost scales with L.
+     *  Runs unconditionally on every photo in postProcessBitmap(), independent of whether
+     *  Contrast Enhancement (CLAHE) is enabled — the TonemapCurve itself is always active,
+     *  so the desaturation it causes is not an optional stylistic effect to be toggled, it's
+     *  a correction for an unavoidable side-effect of the curve. This was previously bundled
+     *  inside applyOpenCVCLAHE() and only ran when that toggle was on; moved out so it applies
+     *  to every photo regardless.
+     *  boost = 1.0 + 0.15*L: no change in shadows, up to +15% chroma in highlights.
+     *  [REALCAMMI FORK] Was 0.35 originally, but that was never tested on a real capture
+     *  before this compensation became unconditional — first real-device test (2026-07-12)
+     *  showed warm/orange surfaces (terracotta roof tiles) turning noticeably too yellow.
+     *  Dialed back to 0.15; re-tune this single value if still too strong/weak.
+     */
+    private Bitmap applyTonemapDesaturationCompensation(Bitmap bitmap) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "applyTonemapDesaturationCompensation");
+        if( bitmap == null )
+            return null;
+        try {
+            Mat src = new Mat();
+            Utils.bitmapToMat(bitmap, src);
+
+            Mat bgr = new Mat();
+            Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR);
+            Mat lab = new Mat();
+            Imgproc.cvtColor(bgr, lab, Imgproc.COLOR_BGR2Lab);
+
+            java.util.List<Mat> channels = new java.util.ArrayList<>();
+            Core.split(lab, channels);
+
+            Mat l_chan = channels.get(0);
             Mat l_norm = new Mat();
-            l_enhanced.convertTo(l_norm, CvType.CV_32F, 1.0/255.0);
+            l_chan.convertTo(l_norm, CvType.CV_32F, 1.0/255.0);
             Mat boost = new Mat();
-            Core.addWeighted(l_norm, 0.35, l_norm, 0, 1.1, boost);
+            Core.addWeighted(l_norm, 0.15, l_norm, 0, 1.1, boost);
 
             Mat a_chan = channels.get(1);
             Mat b_chan = channels.get(2);
@@ -713,34 +776,28 @@ public class PostProcessing {
             channels.set(1, a_chan);
             channels.set(2, b_chan);
 
-            // Merge back and convert to RGBA
-            Mat lab_enhanced = new Mat();
-            Core.merge(channels, lab_enhanced);
-            Mat bgr_enhanced = new Mat();
-            Imgproc.cvtColor(lab_enhanced, bgr_enhanced, Imgproc.COLOR_Lab2BGR);
+            Mat lab_out = new Mat();
+            Core.merge(channels, lab_out);
+            Mat bgr_out = new Mat();
+            Imgproc.cvtColor(lab_out, bgr_out, Imgproc.COLOR_Lab2BGR);
             Mat result_rgba = new Mat();
-            Imgproc.cvtColor(bgr_enhanced, result_rgba, Imgproc.COLOR_BGR2RGBA);
+            Imgproc.cvtColor(bgr_out, result_rgba, Imgproc.COLOR_BGR2RGBA);
             Utils.matToBitmap(result_rgba, bitmap);
 
             src.release();
             bgr.release();
             lab.release();
             for(Mat ch : channels) ch.release();
-            // [REALCAMMI FORK BUGFIX] l_enhanced is channels.get(0) (set at the line above),
-            // already released by the loop just above — releasing it again here was a
-            // double-free of the same native Mat (undefined behaviour in OpenCV's native
-            // layer, can corrupt state for the *next* OpenCV call in the pipeline, e.g.
-            // applyOpenCVSharpen running right after this one).
             l_norm.release();
             boost.release();
             a_f.release();
             b_f.release();
-            lab_enhanced.release();
-            bgr_enhanced.release();
+            lab_out.release();
+            bgr_out.release();
             result_rgba.release();
         } catch(Exception e) {
             if( MyDebug.LOG )
-                Log.e(TAG, "applyOpenCVCLAHE failed: " + e.getMessage());
+                Log.e(TAG, "applyTonemapDesaturationCompensation failed: " + e.getMessage());
         }
         return bitmap;
     }
@@ -920,10 +977,17 @@ public class PostProcessing {
             }
         }
 
-        // [REALCAMMI FORK] OpenCV post-processing — applied in order: NR → Sharpen → CLAHE → BlurDetect
+        // [REALCAMMI FORK] OpenCV post-processing — applied in order: NR → Sharpen → Desaturation
+        // compensation → CLAHE → BlurDetect
         // NR first: clean up noise before sharpening (sharpening amplifies noise if done first)
         // Sharpen second: enhance detail after NR
-        // CLAHE third: improve local contrast on the final clean+sharp image
+        // Desaturation compensation third: runs on the clean+sharp image, not before — avoids an
+        // extra RGB->Lab->RGB round trip (with 8-bit rounding at each step) sitting in front of
+        // NR/Sharpen, which was found to soften fine detail when this ran right after colour
+        // correction instead (2026-07-12). Runs unconditionally, regardless of the CLAHE toggle
+        // below — the TonemapCurve itself is always active, so this is a correction for an
+        // unavoidable side-effect, not an optional stylistic effect.
+        // CLAHE fourth: improve local contrast on the final clean+sharp+corrected image
         // BlurDetect last: analyse the final image and warn user if blurry
         if( main_activity.getApplicationInterface().getOpenCVNRPref() ) {
             if( MyDebug.LOG )
@@ -945,6 +1009,17 @@ public class PostProcessing {
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after OpenCV sharpen: " + (System.currentTimeMillis() - time_s));
         }
+
+        // [REALCAMMI FORK] see note in the block header above — runs here, unconditionally,
+        // regardless of the CLAHE toggle immediately below.
+        if( bitmap == null ) {
+            bitmap = ImageUtils.loadBitmapWithRotation(data, true);
+        }
+        bitmap = applyTonemapDesaturationCompensation(bitmap);
+        if( MyDebug.LOG ) {
+            Log.d(TAG, "Save single image performance: time after tonemap desaturation compensation: " + (System.currentTimeMillis() - time_s));
+        }
+
         if( main_activity.getApplicationInterface().getOpenCVCLAHEPref() ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "applying OpenCV CLAHE");

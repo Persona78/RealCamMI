@@ -438,9 +438,9 @@ public class Camera2Settings {
             // correction tweak, not a pure identity passthrough. TODO: confirm intended values.
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
-                            16, 10,  -1, 10,   0, 10, // Red 1.6
-                            -1, 10,  14, 10,   0, 10, // Green 1.4
-                            0, 10,  -1, 10,  13, 10  // Blue 1.3
+                            11, 10,  -1, 10,   0, 10, // Red 1.0
+                            -1, 10,  11, 10,   0, 10, // Green 1.0
+                            0, 10,  -1, 10,  13, 10  // Blue 1.2
                     });
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
             changed = true;
