@@ -890,11 +890,12 @@ public class PostProcessing {
         // diagnosing the per-channel hue-shift issue. Previous tuned values were R x1.04 / G
         // x1.00 / B x0.92 — see the class doc comment above for the full rationale.
         ColorMatrix cm = new ColorMatrix(new float[] {
-                0.985f, 0f,    0f,    0f, 0f,   // R: 0.99 -> 1.00
-                0f,    0.985f, 0f,    0f, 0f,   // G: 0.99 -> 1.00
-                0f,    0f,    1.00f, 0f, 0f,   // B: 1.03 -> 1.01
+                0.985f, 0f,    0f,    0f, 0f,   // R: 0.985 -> 1.00
+                0f,    0.985f, 0f,    0f, 0f,   // G: 0.985 -> 1.00
+                0f,    0f,    1.00f, 0f, 0f,   // B: 1.00 -> 1.01
                 0f,    0f,    0f,    1f, 0f    // A
         });
+        
         ColorMatrix saturationBoost = new ColorMatrix();
         saturationBoost.setSaturation(1.09f);
         cm.postConcat(saturationBoost);
