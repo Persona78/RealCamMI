@@ -895,6 +895,9 @@ public class PostProcessing {
                 0f,    0f,    1.00f, 0f, 0f,   // B: 1.03 -> 1.01
                 0f,    0f,    0f,    1f, 0f    // A
         });
+        ColorMatrix saturationBoost = new ColorMatrix();
+        saturationBoost.setSaturation(1.09f);
+        cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(corrected);
