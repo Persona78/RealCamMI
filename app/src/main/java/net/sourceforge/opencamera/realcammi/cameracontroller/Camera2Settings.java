@@ -217,6 +217,7 @@ public class Camera2Settings {
         builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
 
+
         // [REALCAMMI FORK] Disabled vs upstream (upstream always sets CONTROL_AF_TRIGGER_IDLE here).
         // TODO: confirm/state the reason this was commented out.
         /*if( !camera_controller.isExtensionSession() ) {
@@ -275,11 +276,8 @@ public class Camera2Settings {
 
             /*builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
             builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-            if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
-                builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_GAMMA_VALUE);
-                builder.set(CaptureRequest.TONEMAP_GAMMA, 5.0f);
-            }*/
+            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF); */
+
             /*if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ) {
                 builder.set(CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST, 0);
             }*/
@@ -444,6 +442,10 @@ public class Camera2Settings {
                     });
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
             changed = true;
+        }
+        if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
+            builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_GAMMA_VALUE);
+            builder.set(CaptureRequest.TONEMAP_GAMMA, 1.08f);
         }
         return changed;
     }

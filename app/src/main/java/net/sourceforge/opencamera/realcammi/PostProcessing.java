@@ -894,7 +894,7 @@ public class PostProcessing {
         });
 
         ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(1.09f);
+        saturationBoost.setSaturation(1.08f);
         cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
