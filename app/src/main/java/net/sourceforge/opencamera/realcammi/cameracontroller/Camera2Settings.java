@@ -55,8 +55,8 @@ public class Camera2Settings {
     // Warm light (2700K – 3000K)
     // Neutral light (3500K – 4500K)
     // Cool light (5000K – 6500K)
-    // RealCamMI Default set to 5000
-    int white_balance_temperature = 5000; // used for white_balance == CONTROL_AWB_MODE_OFF
+    // RealCamMI Default set to 5500
+    int white_balance_temperature = 5500; // used for white_balance == CONTROL_AWB_MODE_OFF
     String flash_value = "flash_off";
     boolean has_iso;
     //private int ae_mode = CameraMetadata.CONTROL_AE_MODE_ON;
@@ -94,6 +94,7 @@ public class Camera2Settings {
 
     private final boolean is_samsung;
     private final boolean is_samsung_s7; // Galaxy S7 or Galaxy S7 Edge
+
     // [REALCAMMI FORK] Xiaomi/Ulefone device fingerprinting — not present upstream, used by
     // setNoiseReductionMode()/setTonemapProfile() etc. to apply device-specific tuning below
     private final boolean is_xiaomi;
@@ -106,8 +107,8 @@ public class Camera2Settings {
         String build_model = Build.MODEL.toLowerCase(Locale.US);
         this.is_samsung_s7 = build_model.contains("sm-g93");
 
-        // [REALCAMMI FORK] Device model/brand matching for Xiaomi Redmi Note 13 Pro 5G ("garnet")
-        // and Ulefone Armor 25T Pro — drives device-specific NR/Edge/tonemap behavior below
+        // [REALCAMMI FORK] Device model/brand matching for Xiaomi
+        // and Ulefone Armor 25T and Pro
         this.is_ulefone = Build.MANUFACTURER.toLowerCase(Locale.US).contains("ulefone") ||
                 Build.BRAND.toLowerCase(Locale.US).contains("ulefone") ||
                 Build.MODEL.contains("armor 25t pro") ||
@@ -516,7 +517,7 @@ public class Camera2Settings {
 
         else if( is_xiaomi ) {
             if( MyDebug.LOG )
-                Log.d(TAG, "set EDGE_MODE_OFF (xiaomi)");
+                Log.d(TAG, "set EDGE_MODE_HIGH_QUALITY (xiaomi)");
             // [REALCAMMI FORK] Confirmed empirically by the user: on Xiaomi (garnet),
             // EDGE_MODE_HIGH_QUALITY produces better image quality than FAST/OFF. Forced
             // explicitly instead of leaving it to the still-capture template default
