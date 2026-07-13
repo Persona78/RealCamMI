@@ -887,14 +887,14 @@ public class PostProcessing {
         // Row 0 = output R, Row 1 = output G, Row 2 = output B, Row 3 = output A
         // [REALCAMMI FORK] Channels set to 0.985f, 0.985f,1.00f to avoid yellow halos on pictures.
         ColorMatrix cm = new ColorMatrix(new float[] {
-                0.985f, 0f,    0f,    0f, 0f,   // R: 0.985 -> 1.00
-                0f,    0.985f, 0f,    0f, 0f,   // G: 0.985 -> 1.00
+                0.975f, 0f,    0f,    0f, 0f,   // R: 0.985 -> 1.00
+                0f,    0.975f, 0f,    0f, 0f,   // G: 0.985 -> 1.00
                 0f,    0f,    1.00f, 0f, 0f,   // B: 1.00 -> 1.01
                 0f,    0f,    0f,    1f, 0f    // A
         });
 
         ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(1.08f);
+        saturationBoost.setSaturation(0.85f);
         cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);

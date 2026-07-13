@@ -437,8 +437,8 @@ public class Camera2Settings {
             // correction tweak, not a pure identity passthrough. TODO: confirm intended values.
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
-                            9, 10,  0, 10,   0, 10, // Red 0.9
-                            0, 10,  9, 10,   0, 10, // Green 0.9
+                            8, 10,  0, 10,   0, 10, // Red 0.9
+                            0, 10,  8, 10,   0, 10, // Green 0.9
                             0, 10,  0, 10,  10, 10  // Blue 1.0
                     });
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
@@ -446,7 +446,7 @@ public class Camera2Settings {
         }
         if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
             builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_GAMMA_VALUE);
-            builder.set(CaptureRequest.TONEMAP_GAMMA, 1.07f);
+            builder.set(CaptureRequest.TONEMAP_GAMMA, 0.90f);
         }
         return changed;
     }
