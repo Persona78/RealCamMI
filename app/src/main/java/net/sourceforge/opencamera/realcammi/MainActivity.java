@@ -5861,6 +5861,9 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
                             case TONEMAPPROFILE_LOG:
                                 string_id = R.string.video_log;
                                 break;
+                            case TONEMAPPROFILE_SLOG3:
+                                string_id = R.string.preference_video_slog3;
+                                break;
                             case TONEMAPPROFILE_GAMMA:
                                 string_id = R.string.preference_video_gamma;
                                 break;

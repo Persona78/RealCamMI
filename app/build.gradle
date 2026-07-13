@@ -89,7 +89,7 @@ androidComponents {
         variant.outputs.each { output ->
             // The APK output filename is set dynamically below by gradle.bat,
             // using the name you type in when prompted ("Set app name here:")
-			            output.outputFileName.set("RealCamMI-${variant.name}.apk") 
+			            output.outputFileName.set("RealCamMI_Basic-${variant.name}.apk") 
         } 
     }) 
 } 

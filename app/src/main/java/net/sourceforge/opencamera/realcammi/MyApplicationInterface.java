@@ -903,13 +903,15 @@ public class MyApplicationInterface extends BasicApplicationInterface {
                 return CameraController.TonemapProfile.TONEMAPPROFILE_JTLOG;
             case "jtlog2":
                 return CameraController.TonemapProfile.TONEMAPPROFILE_JTLOG2;
+            case "slog3":
+                return CameraController.TonemapProfile.TONEMAPPROFILE_SLOG3;
         }
         return CameraController.TonemapProfile.TONEMAPPROFILE_OFF;
     }
 
     @Override
     public float getVideoLogProfileStrength() {
-        String video_log = sharedPreferences.getString(PreferenceKeys.VideoLogPreferenceKey, "off");
+        String video_log = sharedPreferences.getString(PreferenceKeys.VideoLogPreferenceKey, "jtvideo");
         // remember to update getVideoTonemapProfile() if adding/changing modes
         switch( video_log ) {
             case "off":
@@ -918,21 +920,11 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             case "gamma":
             case "jtvideo":
             case "jtlog":
+            case "slog3":
             case "jtlog2":
                 return 0.0f;
-            /*case "fine":
-                return 1.0f;
-            case "low":
-                return 5.0f;
-            case "medium":
-                return 10.0f;
-            case "strong":
-                return 100.0f;
-            case "extra_strong":
-                return 500.0f;*/
-            // need a range of values as behaviour can vary between devices - e.g., "fine" has more effect on Nexus 6 than
-            // other devices such as OnePlus 3T or Galaxy S10e
-            // recalibrated in v1.48 to correspond to improvements made in CameraController2
+            /** need a range of values as behaviour can vary between devices - e.g., "fine" has more effect on Nexus 6 than
+            other devices such as OnePlus 3T or Galaxy S10e recalibrated in v1.48 to correspond to improvements made in CameraController2*/
             case "fine":
                 return 10.0f;
             case "low":
@@ -949,7 +941,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     @Override
     public float getVideoProfileGamma() {
-        String gamma_value = sharedPreferences.getString(PreferenceKeys.VideoProfileGammaPreferenceKey, "2.2");
+        String gamma_value = sharedPreferences.getString(PreferenceKeys.VideoProfileGammaPreferenceKey, "2.4");
         float gamma = 0.0f;
         try {
             gamma = Float.parseFloat(gamma_value);
@@ -1309,6 +1301,9 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     public boolean getColorCorrectionPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.ColorCorrectionPreferenceKey, true);
     }
+    public boolean getAutoHDRPref() {
+        return sharedPreferences.getBoolean(PreferenceKeys.AutoHDRPreferenceKey, false);
+    }
 
     // [REALCAMMI FORK] OpenCV post-processing getters
     public boolean getOpenCVSharpenPref() {
@@ -1323,9 +1318,6 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         return sharedPreferences.getBoolean(PreferenceKeys.OpenCVCLAHEPreferenceKey, false);
     }
 
-    public boolean getAutoHDRPref() {
-        return sharedPreferences.getBoolean(PreferenceKeys.AutoHDRPreferenceKey, false);
-    }
 
     public boolean getOpenCVBlurDetectPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.OpenCVBlurDetectPreferenceKey, false);

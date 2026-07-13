@@ -926,11 +926,11 @@ public class Camera2Settings {
         float out;
         if( in >= 0.01125000f ) {
             // Logarithmic segment: compress highlights and preserve mid-tone detail
-            out = (float)((420.0 + Math.log10((in + 0.01) / 0.19) * 261.5) / 1023.0);
+            out = (float)((420.0 + Math.log10((in + 0.01) / (0.18 + 0.01)) * 261.5) / 1023.0);
         }
         else {
             // Linear segment: keep near-black values clean without log lift
-            out = (float)(((in * (171.2102946929 - 95.0) / 0.01125) + 95.0) / 1023.0);
+            out = (float)(((in * (171.2102946929 - 95.0) / 0.01125000) + 95.0) / 1023.0);
         }
         // Clamp to valid range to guard against floating-point edge cases at 0.0 and 1.0
         return Math.max(0f, Math.min(1f, out));
@@ -1018,6 +1018,7 @@ public class Camera2Settings {
                     Log.d(TAG, "handle via TONEMAP_MODE_CONTRAST_CURVE / TONEMAP_CURVE");
                 float [] values = null;
                 switch( tonemap_profile ) {
+
                     case TONEMAPPROFILE_REC709:
                         // y = 4.5x if x < 0.018, else y = 1.099*x^0.45 - 0.099
                         float [] x_values = new float[] {
@@ -1040,6 +1041,7 @@ public class Camera2Settings {
                             values[c++] = out;
                         }
                         break;
+
                     case TONEMAPPROFILE_SRGB:
                         values = new float [] {
                                 0.0000f, 0.0000f, 0.0667f, 0.2864f, 0.1333f, 0.4007f, 0.2000f, 0.4845f,
@@ -1048,6 +1050,7 @@ public class Camera2Settings {
                                 0.8000f, 0.9063f, 0.8667f, 0.9389f, 0.9333f, 0.9701f, 1.0000f, 1.0000f
                         };
                         break;
+
                     case TONEMAPPROFILE_SLOG3:
                     {
                         // [REALCAMMI FORK] Sony S-Log3 log profile for professional-style footage.
@@ -1086,6 +1089,7 @@ public class Camera2Settings {
                         }
                     }
                     break;
+
                     case TONEMAPPROFILE_LOG:
                     case TONEMAPPROFILE_GAMMA:
                     {
@@ -1103,6 +1107,7 @@ public class Camera2Settings {
                         int n_values = is_samsung ? 32 : CameraController2.tonemap_log_max_curve_points_c;
                         //int n_values = test_new ? 32 : 128;
                         //int n_values = 32;
+
                         if( MyDebug.LOG )
                             Log.d(TAG, "n_values: " + n_values);
 
@@ -1184,6 +1189,7 @@ public class Camera2Settings {
                             values[c++] = (tonemap_profile==TonemapProfile.TONEMAPPROFILE_LOG) ? getLogProfile(1.0f) : getGammaProfile(1.0f);
                             values = Arrays.copyOfRange(values,0,c);
                         }*/
+
                     if( MyDebug.LOG ) {
                         int n_values = values.length/2;
                         for(int i=0;i<n_values;i++) {
@@ -1197,16 +1203,19 @@ public class Camera2Settings {
                         }
                     }
                     break;
+
                     case TONEMAPPROFILE_JTVIDEO:
                         values = camera_controller.jtvideo_values;
                         if( MyDebug.LOG )
                             Log.d(TAG, "setting JTVideo profile");
                         break;
+
                     case TONEMAPPROFILE_JTLOG:
                         values = camera_controller.jtlog_values;
                         if( MyDebug.LOG )
                             Log.d(TAG, "setting JTLog profile");
                         break;
+
                     case TONEMAPPROFILE_JTLOG2:
                         values = camera_controller.jtlog2_values;
                         if( MyDebug.LOG )
