@@ -952,7 +952,6 @@
     <string name="preference_video_jtvideo" translatable="false">JTVideo</string>
     <string name="preference_video_jtlog" translatable="false">JTLog</string>
     <string name="preference_video_jtlog2" translatable="false">JTLog2</string>
-    <string name="preference_video_slog3" translatable="false">SLog3</string>
     <string name="preference_video_profile_gamma" translatable="false">Video gamma value</string>
     <string name="preference_video_profile_gamma_summary" translatable="false">Gamma value to use for video if video picture profile is set to Gamma\n%s</string>
     <string name="preference_video_profile_gamma_1_6" translatable="false">1.6</string>

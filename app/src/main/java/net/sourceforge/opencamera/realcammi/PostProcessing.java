@@ -1089,23 +1089,23 @@ public class PostProcessing {
 
         // ColorMatrix row order: [ R, G, B, A, offset ]
         // Row 0 = output R, Row 1 = output G, Row 2 = output B, Row 3 = output A
-        // [REALCAMMI FORK] Channels set to (0.98/0.98/1.00),
-        // See the class doc comment above for the full rationale.
+        // [REALCAMMI FORK] Channels set to (0.98/0.98/1.00) - see the class doc comment above
+        // for the full rationale.
         // Tune 1
         ColorMatrix cm = new ColorMatrix(new float[] {
-                0.980f, 0f,    0f,    0f, 0f,   // R: 0.98 -2%
-                0f,    0.980f, 0f,    0f, 0f,   // G: 0.98 -2%
+                0.980f, 0f,    0f,    0f, 0f,   // R: -2%
+                0f,    0.980f, 0f,    0f, 0f,   // G: -2%
                 0f,    0f,    1.00f, 0f, 0f,   // B: unchanged
                 0f,    0f,    0f,    1f, 0f    // A
         });
 
         /* [REALCAMMI FORK NOTE] This is a UNIFORM +2% saturation boost, applied equally across
-         the whole image. It stacks with applyTonemapDesaturationCompensation() (runs later in
-         the pipeline, after NR/Sharpen), which adds a SECOND, separate boost weighted by
-         luminance (0.18 coefficient, highlights only). Both are intentionally kept active:
-         this one lifts saturation everywhere, the other specifically compensates highlights
-         for the TonemapCurve's desaturation. If either one is retuned in isolation later,
-         remember the other is still stacking on top of it.*/
+            the whole image. It stacks with applyTonemapDesaturationCompensation() (runs later in
+            the pipeline, after NR/Sharpen), which adds a SECOND, separate boost weighted by
+            luminance (0.18 coefficient, highlights only). Both are intentionally kept active:
+            this one lifts saturation everywhere, the other specifically compensates highlights
+            for the TonemapCurve's desaturation. If either one is retuned in isolation later,
+            remember the other is still stacking on top of it.*/
 
         ColorMatrix saturationBoost = new ColorMatrix();
         saturationBoost.setSaturation(1.02f);
