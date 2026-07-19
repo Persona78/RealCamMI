@@ -85,19 +85,42 @@ The Qualcomm CamX HAL on Garnet ignores `CONTROL_ZOOM_RATIO` / `SCALER_CROP_REGI
 
 ### 3. Custom tonemap curve profiles
 
-**Files:** `CameraController2.java`, `Camera2Settings.java`
+**Files:** `CameraController2.java`, `Camera2Settings.java`, `PostProcessing.java`
 
-Three custom tonemap profiles tuned through iterative pixel-level comparison against the stock camera app:
+Eight tonemap/"Image Profile" options, tuned through iterative pixel-level comparison against the stock camera app:
 
 | Profile | Description |
 |---|---|
-| **JTVideo** | Natural rendering — clean deep shadows, smooth midtone transitions, controlled highlight rolloff. Default profile. |
+| **Standard** | Native camera rendering, untouched. Default. |
+| **JTVideo** | Natural rendering — clean deep shadows, smooth midtone transitions, controlled highlight rolloff. |
 | **JTLog** | Logarithmic profile — compressed shadows and highlights for maximum dynamic range, suitable for colour grading in post. |
+| **JTLog2** | A second, more aggressive logarithmic variant. |
+| **Rec709** | Standard ITU-R BT.709 OETF. |
+| **sRGB** | Standard sRGB transfer function. |
+| **Log** | Adjustable-strength logarithmic curve. |
+| **Gamma** | Adjustable power-law gamma curve. |
 | **S-Log3** | Sony S-Log3 implementation — maximum dynamic range for professional post-production (DaVinci Resolve, CapCut, etc.). Footage will look flat and desaturated — requires a LUT or manual grade. |
 
 The 18-point JTVideo curve is maintained holistically: any edit is re-solved as a constrained least-squares problem (maximum |slope delta| ≤ 0.4 between consecutive segments, minimal deviation from the intended shape) rather than adjusting individual points, to avoid introducing visible tonal banding.
 
 Also fixes the video log options being hidden unnecessarily: the `tonemap_log_max_curve_points_c` threshold was reduced from 128 to 17 (the actual number of points the custom curves use), so the Video Log and Profile Gamma options now correctly appear on Garnet.
+
+**Photo vs video handling differs, deliberately:** in video mode, the chosen profile is applied live via `TONEMAP_MODE` exactly as before. In photo mode, a profile is **never** applied live to the capture request — confirmed on-device (2026-07-18) that doing so caused the Xiaomi garnet AE algorithm to drift the preview progressively darker over several seconds, reproduced with every non-Standard profile. Instead, for photos, the camera always captures in the native/Standard tonemap (stable, matches Standard's proven behaviour), and the chosen profile's curve is applied afterwards to the captured bitmap in `PostProcessing.applyImageProfile()` — including a decode-back-to-linear-light step, since the curve is an OETF designed for linear input, not for an already gamma-encoded JPEG. One consequence: the live photo preview always shows the Standard look while framing; only the saved photo shows the selected profile's rendering.
+
+### 3a. AI Scene Detection
+
+**File:** `SceneDetector.java`, integrated via `CameraController2.java`, `PostProcessing.java`
+
+A lightweight on-device scene classifier, independent from Auto HDR, active whenever either Auto HDR or AI Scene Detection is enabled. Reads a dedicated low-resolution (320×240) analysis frame in the background and classifies the scene into one of four categories, using 3-consecutive-frame hysteresis to avoid flickering between categories:
+
+| Category | Detection method | Effect |
+|---|---|---|
+| **EXTREME_BACKLIT** | Luminance histogram (large dark + large bright fraction at once) | Can trigger Auto HDR (see section 7), if that is also enabled |
+| **LOW_LIGHT** | Metered ISO/exposure time at the moment of analysis | Raises noise-reduction strength to STRONG for the photo |
+| **INDOOR** | MLKit Image Labeling | Raises sharpening amount to 0.65 (from the 0.5 default) |
+| **STANDARD** | None of the above | No adjustment |
+
+This only changes two post-processing parameters (NR strength, sharpen amount) plus the Auto HDR trigger condition — it does not alter the live preview's brightness or colour in any way.
 
 ### 4. Colour correction post-processing
 
@@ -105,9 +128,11 @@ Also fixes the video log options being hidden unnecessarily: the `tonemap_log_ma
 
 Corrects a systematic blue colour cast (B/R ratio ~1.12 vs ~1.00 in stock camera) using a `ColorMatrix` applied after capture.
 
-This cannot be done via `COLOR_CORRECTION_TRANSFORM` because the Qualcomm CamX HAL silently ignores that field when AWB is in AUTO mode (a documented limitation of the Android Camera2 API on this hardware). Colour correction is applied in the post-processing pipeline instead, so it works regardless of AWB mode.
+This cannot be done via `COLOR_CORRECTION_TRANSFORM`/`COLOR_CORRECTION_GAINS` because the Android Camera2 API specification itself ignores those fields whenever `CONTROL_AWB_MODE != OFF` (i.e. AUTO) — this is universal, documented platform behaviour, not a hardware-specific quirk of any one vendor's HAL. Colour correction is applied in the post-processing pipeline instead, so it works regardless of AWB mode.
 
 Activated via a dedicated toolbar button (tap to toggle; red = active). Visible in **Settings → GUI Icons → Show colour correction icon**.
+
+**Bugfix (2026-07-17):** the manual-white-balance code path in `Camera2Settings.setWhiteBalance()` had its condition inverted — it checked `CONTROL_AWB_MODE_AUTO` instead of `CONTROL_AWB_MODE_OFF`, meaning the manual colour-correction-matrix/gains override ran every time AWB was in its default AUTO state instead of only when the user picked a manual white-balance temperature. This was invisible on Garnet (where, per the platform behaviour above, those fields are ignored under AWB AUTO regardless), but caused a visible green/negative colour cast on Ulefone Armor 25T under AWB AUTO in low light, since its HAL does not ignore them. Fixed by correcting the condition.
 
 ### 5. OpenCV post-processing pipeline
 
@@ -195,7 +220,8 @@ All legacy Android preference and fragment APIs migrated to AndroidX across all 
 |---|---|---|
 | Physical camera discovery | `getCameraIdList()` only | Validated, filtered list + physical lens switching |
 | Zoom in still capture (Garnet) | Broken (HAL bug) | Fixed via software crop |
-| Tonemap profiles | Gamma / flat only | JTVideo, JTLog, S-Log3 |
+| Tonemap profiles | Gamma / flat only | Standard, JTVideo, JTLog, JTLog2, Rec709, sRGB, Log, Gamma, S-Log3 — applied live in video, post-capture in photos |
+| AI Scene Detection | — | On-device classifier (backlit/low-light/indoor/standard) adjusts NR strength and sharpening automatically |
 | Vendor HDR extension session | Not auto-selected | Manual `X_HDR` + automatic ISO-based Auto HDR, both restricted to Xiaomi/Ulefone |
 | Processing-time feedback | None | Real extension progress % where available, elapsed-time toast fallback everywhere else |
 | Colour correction | — | Post-processing pipeline |
@@ -240,6 +266,7 @@ implementation 'com.quickbirdstudios:opencv:4.5.3.0'
 - **Video colour shift on Garnet**: a colour/exposure shift occurs the moment video recording starts. This is a device-level HAL/firmware issue, confirmed not to occur on Ulefone or other Xiaomi devices, and is not fixable from application code. Use the stock camera app for video on Garnet; photo mode is unaffected.
 - **OpenCV post-processing latency**: bilateral filter and CLAHE require JPEG decode + recompression, adding save time proportional to image resolution.
 - **Auto HDR capture latency**: on well-lit scenes where Auto HDR engages, the camera-reopen-and-merge cycle adds noticeable extra capture time (roughly one to a few seconds) compared to a normal shot. Low-light shots are unaffected.
+- **Image Profile preview doesn't match the saved photo**: in photo mode, the live preview always shows the Standard/native look regardless of the selected Image Profile (see section 3) — the profile's rendering only appears in the saved photo, applied afterwards in post-processing. This is a deliberate trade-off to avoid an AE exposure-drift bug confirmed when profiles were applied live to photo capture; showing the profile live in the preview as well would need a separate real-time preview-only rendering path, not yet implemented.
 - **Vendor extension behaviour is HAL-dependent and not yet validated end-to-end on real hardware**: whether the extension actually improves highlight retention on Garnet, and whether the device reports real-time progress percentage, both depend on the vendor's own (closed-source) implementation.
 
 ---

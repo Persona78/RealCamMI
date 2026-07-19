@@ -453,6 +453,7 @@ public class OnScreenIcons {
         return changed;
     }
 
+    // Tune 6
     private boolean showExposureLockIcon() {
         if( !main_activity.getPreview().supportsExposureLock() )
             return false;

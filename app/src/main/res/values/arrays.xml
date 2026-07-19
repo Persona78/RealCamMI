@@ -549,6 +549,7 @@
         <item>@string/preference_video_log_strong</item>
         <item>@string/preference_video_log_extra_strong</item>
         <item>@string/preference_video_gamma</item>
+        <item>@string/preference_video_slog3</item>
         <item>@string/preference_video_jtvideo</item>
         <item>@string/preference_video_jtlog</item>
         <item>@string/preference_video_jtlog2</item>
@@ -563,6 +564,7 @@
         <item>strong</item>
         <item>extra_strong</item>
         <item>gamma</item>
+        <item>slog3</item>
         <item>jtvideo</item>
         <item>jtlog</item>
         <item>jtlog2</item>

@@ -56,7 +56,7 @@ public class Camera2Settings {
     // Neutral light (3500K – 4500K)
     // Cool light (5000K – 6500K)
     // RealCamMI Default set to 5000
-    int white_balance_temperature = 5000; // used for white_balance == CONTROL_AWB_MODE_OFF
+    int white_balance_temperature = 6500; // used for white_balance == CONTROL_AWB_MODE_OFF
     String flash_value = "flash_off";
     boolean has_iso;
     //private int ae_mode = CameraMetadata.CONTROL_AE_MODE_ON;
@@ -195,34 +195,36 @@ public class Camera2Settings {
         return exif_orientation;
     }
 
+    // Tune 4
     @RequiresApi(api = Build.VERSION_CODES.R)
     void setupBuilder(CaptureRequest.Builder builder, boolean is_still) {
+
         // activates the camera's automatic exposure control (Auto-Exposure - AE).
-        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        //builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
-        builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
+        //builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
         // Corrects chromatic aberrations (colored fringes) with the correct constant.
-        builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+        //builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
         // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
         // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
         // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
         // own pipeline, showing up as a visible color blotch in a corner of the photo.
-        builder.set(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
+        //builder.set(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
         // [REALCAMMI FORK] Uses the higher-precision color correction matrix computation instead of
         // leaving COLOR_CORRECTION_MODE at the HAL default (typically FAST). Was only present in a
         // dead/commented block upstream. Safe to set here (before setWhiteBalance()/manual WB logic
         // below, which saves/restores whatever value is present on the builder at that point).
-        builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_HIGH_QUALITY);
+        //builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_HIGH_QUALITY);
         // Forces Tonemap to rebalance the gamma channel in the shadows.
-        builder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
-        builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
+
+        //builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
 
         // [REALCAMMI FORK] Disabled vs upstream (upstream always sets CONTROL_AF_TRIGGER_IDLE here).
         // TODO: confirm/state the reason this was commented out.
-        /*if( !camera_controller.isExtensionSession() ) {
+        if( !camera_controller.isExtensionSession() ) {
             // Tell the camera to cancel/idle the focus trigger
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
-        }*/
+        }
 
         setSceneMode(builder);
         setColorEffect(builder);
@@ -395,7 +397,7 @@ public class Camera2Settings {
         if( camera_controller.isExtensionSession() ) {
             // don't set for extensions
         }
-            /*else if( builder.get(CaptureRequest.CONTROL_AWB_MODE) == null && white_balance == CameraMetadata.CONTROL_AWB_MODE_AUTO ) {
+           /* else if( builder.get(CaptureRequest.CONTROL_AWB_MODE) == null && white_balance == CameraMetadata.CONTROL_AWB_MODE_AUTO ) {
                 // can leave off
             }*/
         else if( builder.get(CaptureRequest.CONTROL_AWB_MODE) == null || builder.get(CaptureRequest.CONTROL_AWB_MODE) != white_balance ) {
@@ -436,15 +438,21 @@ public class Camera2Settings {
             // [REALCAMMI FORK] vs upstream's neutral identity matrix (1,1,0,1,0,1 / 0,1,1,1,0,1 / 0,1,0,1,1,1),
             // this uses fixed-point /10 scaling with slight per-channel offsets — a mild color
             // correction tweak, not a pure identity passthrough. TODO: confirm intended values.
+            // Tune 3
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
-                            11, 10,  -1, 10,   0, 10, // Red 1.0
-                            -1, 10,  11, 10,   0, 10, // Green 1.0
-                            0, 10,  -1, 10,  13, 10  // Blue 1.2
+                            12, 10,  -1, 10,  -1, 10, //RED
+                            -1, 10,  11, 10,  0, 10, // GREEN
+                            -1, 10,  -1, 10,  12, 10  // BLUE
                     });
+
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, color_space_transform);
             changed = true;
         }
+        /*if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
+            builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_GAMMA_VALUE);
+            builder.set(CaptureRequest.TONEMAP_GAMMA, 1.06f);
+        } */
         return changed;
     }
 
@@ -560,17 +568,16 @@ public class Camera2Settings {
                     Log.d(TAG, "noise_reduction_mode was already set: " + noise_reduction_mode);
             }
         }
-        else if( is_ulefone || is_samsung_s7 ) {
+        else if( is_samsung_s7 ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "set NOISE_REDUCTION_MODE_OFF");
             // see https://sourceforge.net/p/opencamera/discussion/general/thread/48bd836b/ ,
             // https://stackoverflow.com/questions/36028273/android-camera-api-glossy-effect-on-galaxy-s7
             // need NOISE_REDUCTION_MODE_OFF to avoid excessive blurring
-            // Avoid excessive blurring on Ulefone Armor 25T
             builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
         }
 
-        else if( is_xiaomi ) {
+        else if( is_ulefone || is_xiaomi ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "set NOISE_REDUCTION_MODE_MINIMAL (xiaomi)");
             // [REALCAMMI FORK] `is_xiaomi` was calculated but never actually used here — the CamX HAL
@@ -628,7 +635,7 @@ public class Camera2Settings {
                 Log.d(TAG, "iso: " + iso);
                 Log.d(TAG, "exposure_time: " + exposure_time);
             }
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON); //default OFF
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
             long actual_exposure_time = exposure_time;
             if( !is_still ) {
@@ -918,7 +925,7 @@ public class Camera2Settings {
      * @return    S-Log3 encoded output value, clamped to [0.0, 1.0]
      */
     private float getSlog3Profile(float in) {
-        in = in * 0.90f; // Darkens the image by ~10% BEFORE the Log calculation
+        //in = in * 0.90f; // Darkens the image by ~10% BEFORE the Log calculation
         //
         //Log calculationNo video picture profile em definições de video
         float out;
@@ -947,6 +954,23 @@ public class Camera2Settings {
             have_tonemap_profile = false;
         else if( tonemap_profile == CameraController.TonemapProfile.TONEMAPPROFILE_GAMMA && gamma_profile == 0.0f )
             have_tonemap_profile = false;
+
+        // [REALCAMMI FORK BUGFIX] Applying any non-default TONEMAP_MODE (PRESET_CURVE or
+        // CONTRAST_CURVE) confirmed (2026-07-18, on-device video vs photo comparison) to cause
+        // the Xiaomi garnet AE algorithm to drift the preview progressively darker over several
+        // seconds in photo mode - reproduced with every profile (Rec709, sRGB, Log, Gamma,
+        // JTVideo), never in Standard. The same profiles are stable and correct when applied
+        // in video mode, so this is specific to how this HAL's AE interacts with a custom
+        // tonemap curve during photo preview/capture. Rather than fight the HAL's AE, photo
+        // mode now always captures in the native/Standard tonemap (exactly like Standard,
+        // proven stable), and the chosen profile's curve is instead applied to the bitmap
+        // after capture, in PostProcessing.applyImageProfile(). Video keeps using the live
+        // TONEMAP_MODE below, since that path is confirmed stable.
+        if( have_tonemap_profile && !camera_controller.getPreviewIsVideoMode() ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "photo mode: skipping live tonemap_profile, applied in post-processing instead");
+            have_tonemap_profile = false;
+        }
 
         // to use test_new, also need to uncomment the test code in setFocusValue() to call setTonemapProfile()
         //boolean test_new = this.af_mode == CaptureRequest.CONTROL_AF_MODE_AUTO; // testing

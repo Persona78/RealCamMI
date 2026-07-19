@@ -948,6 +948,7 @@
     <string name="preference_video_rec709" translatable="false">REC709</string>
     <string name="preference_video_srgb" translatable="false">sRGB</string>
     <string name="preference_video_gamma" translatable="false">Gamma</string>
+    <string name="preference_video_slog3" translatable="false">S-Log3</string>
     <string name="preference_video_jtvideo" translatable="false">JTVideo</string>
     <string name="preference_video_jtlog" translatable="false">JTLog</string>
     <string name="preference_video_jtlog2" translatable="false">JTLog2</string>
@@ -1058,6 +1059,9 @@
 	
 	<string name="preference_auto_hdr" translatable="false">Auto HDR</string>
     <string name="preference_auto_hdr_summary" translatable="false">When enabled in Standard photo mode, if the metered ISO is less than or equal to 1100 the app automatically switches to the device\'s HDR camera extension for that shot (light scene, flash and manual focus become unavailable while it\'s active). Above that ISO, the camera stays in normal mode with flash available (Dark scene). Adds extra capture time on well-lit shots.</string>
+
+	<string name="preference_ai_scene_detection" translatable="false">Scene Detection</string>
+    <string name="preference_ai_scene_detection_summary" translatable="false">When enabled in Standard photo mode, the AI ​​component will evaluate the shot and calibrate the image as necessary.</string>
 
     <string name="preference_save_preshots" translatable="false">Save preview shots</string>
     <string name="preference_save_preshots_summary" translatable="false">When enabled, a short video will be saved alongside each photo, containing shots from the moment before the photo was taken. Not supported for expo, focus bracketing or panorama modes.\n%s</string>

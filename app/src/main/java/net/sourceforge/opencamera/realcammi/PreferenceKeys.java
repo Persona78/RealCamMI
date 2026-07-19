@@ -142,6 +142,7 @@ public class PreferenceKeys {
     public static final String PhotoModePreferenceKey = "preference_photo_mode";
 
     public static final String AutoHDRPreferenceKey = "preference_auto_hdr";
+    public static final String AISceneDetectionPreferenceKey = "preference_ai_scene_detection"; // [REALCAMMI FORK]
 
 
     public static final String HDRSaveExpoPreferenceKey = "preference_hdr_save_expo";

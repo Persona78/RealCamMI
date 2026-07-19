@@ -8,6 +8,9 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+// [REALCAMMI FORK] needed for applyImageProfile() - post-capture photo tonemap curve
+import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
+import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController2;
 // [REALCAMMI FORK] OpenCV imports for advanced post-processing
 import org.opencv.android.Utils;
 import org.opencv.core.Core;
@@ -501,7 +504,7 @@ public class PostProcessing {
                         textview.setShadowLayer(shadow_radius, 0.0f, 0.0f, Color.BLACK);
                     }
                     else if( draw_shadowed == MyApplicationInterface.Shadow.SHADOW_BACKGROUND ) {
-                        textview.setBackgroundColor(Color.argb(68, 0, 0, 0)); // default 64,0,0,0
+                        textview.setBackgroundColor(Color.argb(64, 0, 0, 0));
                     }
                     //textview.setBackgroundColor(Color.BLACK); // test
                     textview.setGravity(Gravity.END); // so text is right-aligned - important when there are multiple lines
@@ -526,8 +529,17 @@ public class PostProcessing {
     /** Applies adaptive sharpening via Unsharp Mask (USM).
      *  USM works by subtracting a blurred version of the image from itself,
      *  amplifying fine detail without introducing colour fringing.
-     *  Strength: radius=1.5px gaussian, amount=1.2, threshold=0.
+     *  Gaussian blur radius: 1.15px (previously 1.5px). Amount: see sharpen_amount below -
+     *  reference scale used while tuning: 0.5 = Soft (portraits/natural textures),
+     *  0.8 = Moderate (balanced, no visible artefacts), 1.2 = High (strong edge sharpening).
      */
+    // [REALCAMMI FORK] Piece 4 of AI scene detection: was a hardcoded addWeighted() call at a
+    // fixed amount=0.5 ("Soft" on the scale above). Now an instance field, set in
+    // postProcessBitmap() right before applyOpenCVSharpen() runs: INDOOR gets a modest bump to
+    // 0.65 (still well short of the "Moderate" 0.8 tier) to help text/fine-detail legibility;
+    // everything else keeps the previous default of 0.5.
+    private float sharpen_amount = 0.5f;
+
     private Bitmap applyOpenCVSharpen(Bitmap bitmap) {
         if( MyDebug.LOG )
             Log.d(TAG, "applyOpenCVSharpen");
@@ -542,17 +554,9 @@ public class PostProcessing {
 
             // Unsharp mask: sharpened = src * (1 + amount) - blurred * amount
             Mat sharpened = new Mat();
-            //Option 1: Soft (Ideal for portraits and natural textures) amount = 0.5
-            // Core.addWeighted(src, 1.5, blurred, -0.5, 0, sharpened);
-            //
-            //Option 2: Moderate (Balanced, without creating digital artifacts) amount = 0.8
-            // Core.addWeighted(src, 1.8, blurred, -0.8, 0, sharpened);
-            //
-            //Option 3: High sharp edges
-            //Core.addWeighted(src, 2.2, blurred, -1.2, 0, sharpened);
-            //
-            // Active Option 1
-            Core.addWeighted(src, 1.5, blurred, -0.5, 0, sharpened);
+            // sharpen_amount is set dynamically in postProcessBitmap() based on AI scene
+            // category - see field comment above for the value scale and current logic.
+            Core.addWeighted(src, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0, sharpened);
 
             Utils.matToBitmap(sharpened, bitmap);
 
@@ -577,7 +581,12 @@ public class PostProcessing {
     private static final int NR_STRENGTH_LIGHT = 0;
     private static final int NR_STRENGTH_MEDIUM = 1;
     private static final int NR_STRENGTH_STRONG = 2;
-    private static final int NR_STRENGTH = NR_STRENGTH_LIGHT; // <-- change this line to test
+    // [REALCAMMI FORK] Piece 4 of AI scene detection: this used to be `static final`, hardcoded
+    // to NR_STRENGTH_LIGHT. Now it's an instance field, set in postProcessBitmap() right before
+    // applyOpenCVNR() runs, based on main_activity.getPreview().getCameraController()
+    // .getCurrentSceneCategory(): LOW_LIGHT -> STRONG, everything else -> LIGHT (the previous
+    // hardcoded default, unchanged for STANDARD/EXTREME_BACKLIT/INDOOR).
+    private int NR_STRENGTH = NR_STRENGTH_LIGHT;
 
     /** Applies noise reduction via Bilateral Filter.
      *  Bilateral filter preserves edges while smoothing flat areas, unlike
@@ -585,6 +594,7 @@ public class PostProcessing {
      *  [REALCAMMI FORK] Parameters now selected from 3 presets (see NR_STRENGTH above)
      *  instead of a single hardcoded d=9, sigmaColor=75, sigmaSpace=75.
      */
+    // Tune 9
     private Bitmap applyOpenCVNR(Bitmap bitmap) {
         if( MyDebug.LOG )
             Log.d(TAG, "applyOpenCVNR");
@@ -602,7 +612,7 @@ public class PostProcessing {
             int nr_d, nr_sigma;
             switch( NR_STRENGTH ) {
                 case NR_STRENGTH_LIGHT:
-                    nr_d = 5; nr_sigma = 14;
+                    nr_d = 6; nr_sigma = 14;
                     break;
                 case NR_STRENGTH_STRONG:
                     nr_d = 13; nr_sigma = 110;
@@ -671,7 +681,7 @@ public class PostProcessing {
             // [REALCAMMI FORK BUGFIX] clipLimit was hardcoded to 1.1, contradicting the class
             // doc comment above (clipLimit=3.0, raised from 2.0 for the finer tile grid).
             // Restored to the documented/intended value.
-            org.opencv.imgproc.CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(tiles_x, tiles_y)); //Default value 3.0
+            org.opencv.imgproc.CLAHE clahe = Imgproc.createCLAHE(2.2, new Size(tiles_x, tiles_y)); //Default value 3.0
             Mat l_orig = channels.get(0);
             Mat l_enhanced = new Mat();
             clahe.apply(l_orig, l_enhanced);
@@ -726,12 +736,18 @@ public class PostProcessing {
      *  a correction for an unavoidable side-effect of the curve. This was previously bundled
      *  inside applyOpenCVCLAHE() and only ran when that toggle was on; moved out so it applies
      *  to every photo regardless.
-     *  boost = 1.0 + 0.15*L: no change in shadows, up to +15% chroma in highlights.
+     *  boost = 1.02 + 0.180*L: a small +2% lift even in shadows, rising to +20% chroma in
+     *  highlights. (Formula history below, in case any of these needs revisiting again.)
      *  [REALCAMMI FORK] Was 0.35 originally, but that was never tested on a real capture
      *  before this compensation became unconditional — first real-device test (2026-07-12)
      *  showed warm/orange surfaces (terracotta roof tiles) turning noticeably too yellow.
-     *  Dialed back to 0.15; re-tune this single value if still too strong/weak.
+     *  Dialed back to 0.125 (previously 0.15, retuned again after a second real-device pass).
+     *  [REALCAMMI FORK] Updated 2026-07-19: increased to 0.180 (was 0.125) plus a 1.02 base,
+     *  to bring more life to midtones without blowing out highlights - see the "UPDATED VALUES"
+     *  comment further down, right above the active Core.addWeighted() call, for the exact
+     *  current formula. Re-tune these two values (multiplier + base) if still too strong/weak.
      */
+    // Tune 10
     private Bitmap applyTonemapDesaturationCompensation(Bitmap bitmap) {
         if( MyDebug.LOG )
             Log.d(TAG, "applyTonemapDesaturationCompensation");
@@ -753,7 +769,13 @@ public class PostProcessing {
             Mat l_norm = new Mat();
             l_chan.convertTo(l_norm, CvType.CV_32F, 1.0/255.0);
             Mat boost = new Mat();
-            Core.addWeighted(l_norm, 0.15, l_norm, 0, 1.1, boost);
+            // boost = 1.0 + 0.125*l_norm: 1.0 in shadows (l_norm=0, no change), rising to 1.125
+            // in highlights (l_norm=1, +12.5% chroma) - see class doc comment above for history.
+            //Core.addWeighted(l_norm, 0.125, l_norm, 0, 1.0, boost);
+
+            // UPDATED VALUES: We increased the multiplier from 0.125 to 0.180 (an 18% gain instead of 12.5%).
+            // We also added a compensation base of 1.02 to bring life to the midtones without blowing out the highlights.
+            Core.addWeighted(l_norm, 0.180, l_norm, 0, 1.02, boost);
 
             Mat a_chan = channels.get(1);
             Mat b_chan = channels.get(2);
@@ -867,6 +889,188 @@ public class PostProcessing {
     //   Blue channel:  scale by 0.90 (reduce ~10% to bring B/R ratio from 1.12 -> ~1.00)
     //   Red channel:   scale by 1.04 (slight boost to recover warmth lost by blue reduction)
     //   Green channel: unchanged (1.00)
+    /** [REALCAMMI FORK] Returns the resolved (in,out) curve control points - flat array
+     *  [in0,out0, in1,out1, ...], each in [0,1] - for whichever Image Profile the user has
+     *  selected in Photo settings, or null if none is active (Standard, or Log/Gamma with
+     *  zero strength/value).
+     *
+     *  Deliberately duplicates the curve formulas used live in Camera2Settings.setTonemapProfile()
+     *  rather than sharing an instance, because this runs on the ImageSaver background thread,
+     *  potentially well after capture, when the live CameraController2/Camera2Settings for the
+     *  session may already be closed/replaced - reading straight from
+     *  MyApplicationInterface's preference getters (the same ones Preview.java uses) avoids any
+     *  dependency on camera object lifecycle. If the curve formulas above are ever changed,
+     *  the copies here must be updated to match.
+     */
+    private float[] getResolvedImageProfileCurve() {
+        CameraController.TonemapProfile profile = main_activity.getApplicationInterface().getVideoTonemapProfile();
+        if( profile == CameraController.TonemapProfile.TONEMAPPROFILE_OFF )
+            return null;
+
+        float [] values = null;
+        switch( profile ) {
+            case TONEMAPPROFILE_REC709: {
+                float [] x_values = new float[] {
+                        0.0000f, 0.0667f, 0.1333f, 0.2000f,
+                        0.2667f, 0.3333f, 0.4000f, 0.4667f,
+                        0.5333f, 0.6000f, 0.6667f, 0.7333f,
+                        0.8000f, 0.8667f, 0.9333f, 1.0000f
+                };
+                values = new float[2*x_values.length];
+                int c = 0;
+                for(float x_value : x_values) {
+                    float out = (x_value < 0.018f) ? 4.5f * x_value : (float)(1.099*Math.pow(x_value, 0.45) - 0.099);
+                    values[c++] = x_value;
+                    values[c++] = out;
+                }
+                break;
+            }
+            case TONEMAPPROFILE_SRGB:
+                values = new float [] {
+                        0.0000f, 0.0000f, 0.0667f, 0.2864f, 0.1333f, 0.4007f, 0.2000f, 0.4845f,
+                        0.2667f, 0.5532f, 0.3333f, 0.6125f, 0.4000f, 0.6652f, 0.4667f, 0.7130f,
+                        0.5333f, 0.7569f, 0.6000f, 0.7977f, 0.6667f, 0.8360f, 0.7333f, 0.8721f,
+                        0.8000f, 0.9063f, 0.8667f, 0.9389f, 0.9333f, 0.9701f, 1.0000f, 1.0000f
+                };
+                break;
+            case TONEMAPPROFILE_SLOG3: {
+                int n_values = 64;
+                values = new float[2 * n_values];
+                for(int i = 0; i < n_values; i++) {
+                    float in = ((float)i) / (n_values - 1.0f);
+                    float out;
+                    if( in >= 0.01125000f )
+                        out = (float)((420.0 + Math.log10((in + 0.01) / 0.19) * 261.5) / 1023.0);
+                    else
+                        out = (float)(((in * (171.2102946929 - 95.0) / 0.01125) + 95.0) / 1023.0);
+                    values[2*i] = in;
+                    values[2*i+1] = Math.max(0f, Math.min(1f, out));
+                }
+                break;
+            }
+            case TONEMAPPROFILE_LOG: {
+                float log_strength = main_activity.getApplicationInterface().getVideoLogProfileStrength();
+                if( log_strength == 0.0f )
+                    return null;
+                int n_values = 64;
+                values = new float [2*n_values];
+                for(int i=0;i<n_values;i++) {
+                    float in = ((float)i) / (n_values-1.0f);
+                    float out = (float)(Math.log1p(log_strength * in) / Math.log1p(log_strength));
+                    values[2*i] = in;
+                    values[2*i+1] = out;
+                }
+                break;
+            }
+            case TONEMAPPROFILE_GAMMA: {
+                float gamma = main_activity.getApplicationInterface().getVideoProfileGamma();
+                if( gamma == 0.0f )
+                    return null;
+                int n_values = 64;
+                values = new float [2*n_values];
+                for(int i=0;i<n_values;i++) {
+                    float in = ((float)i) / (n_values-1.0f);
+                    float out = (float)Math.pow(in, 1.0f/gamma);
+                    values[2*i] = in;
+                    values[2*i+1] = out;
+                }
+                break;
+            }
+            case TONEMAPPROFILE_JTVIDEO:
+                values = CameraController2.jtvideo_values_base;
+                break;
+            case TONEMAPPROFILE_JTLOG:
+                values = CameraController2.jtlog_values_base;
+                break;
+            case TONEMAPPROFILE_JTLOG2:
+                values = CameraController2.jtlog2_values_base;
+                break;
+        }
+        return values;
+    }
+
+    /** [REALCAMMI FORK] Applies the given (in,out) tonemap curve control points to a captured
+     *  photo bitmap, as a 256-entry lookup table applied identically to the R, G and B channels
+     *  (matching the live TONEMAP_CURVE(values,values,values) behaviour used for video/preview).
+     *  This is how Image Profiles (Rec709/sRGB/Log/Gamma/S-Log3/JT curves) are applied to
+     *  photos - see setTonemapProfile() in Camera2Settings.java for why photo capture itself
+     *  always stays in the native/Standard tonemap, and the profile "look" is added here
+     *  afterwards instead.
+     */
+    private Bitmap applyImageProfile(Bitmap bitmap, float[] curve_points) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "applyImageProfile");
+        if( bitmap == null || curve_points == null || curve_points.length < 4 )
+            return bitmap;
+
+        Mat src = null, rgb = null, dst = null, result_rgba = null, lut = null;
+        try {
+            int n_points = curve_points.length / 2;
+            byte [] lut_bytes = new byte[256];
+            for(int v = 0; v < 256; v++) {
+                // [REALCAMMI FORK BUGFIX] The curve_points (Rec709/sRGB/Log/Gamma/S-Log3/JT) are
+                // OETFs: they expect LINEAR scene-referred input in [0,1], exactly what the
+                // sensor delivers live via TONEMAP_MODE. Here the input is instead an already
+                // gamma-encoded (Standard-processed, sRGB-ish) JPEG bitmap - feeding it straight
+                // into the curve applied a second gamma encoding on top of the first, blowing
+                // shadows/midtones out to near-white. Decoding back to approximate linear light
+                // first (standard sRGB EOTF) before interpolating the curve fixes this, at no
+                // extra runtime cost since it's folded into the same one-time 256-entry LUT.
+                float c = v / 255.0f;
+                float x = (c <= 0.04045f) ? (c / 12.92f) : (float)Math.pow((c + 0.055) / 1.055, 2.4);
+
+                float out;
+                if( x <= curve_points[0] ) {
+                    out = curve_points[1];
+                }
+                else if( x >= curve_points[2*(n_points-1)] ) {
+                    out = curve_points[2*(n_points-1)+1];
+                }
+                else {
+                    out = curve_points[1]; // fallback, overwritten by the loop below
+                    for(int i = 0; i < n_points - 1; i++) {
+                        float x0 = curve_points[2*i], x1 = curve_points[2*(i+1)];
+                        if( x >= x0 && x <= x1 ) {
+                            float y0 = curve_points[2*i+1], y1 = curve_points[2*(i+1)+1];
+                            float t = (x1 > x0) ? (x - x0) / (x1 - x0) : 0.0f;
+                            out = y0 + t * (y1 - y0);
+                            break;
+                        }
+                    }
+                }
+                int byte_val = Math.round(Math.max(0.0f, Math.min(1.0f, out)) * 255.0f);
+                lut_bytes[v] = (byte)byte_val;
+            }
+            lut = new Mat(1, 256, CvType.CV_8UC1);
+            lut.put(0, 0, lut_bytes);
+
+            src = new Mat();
+            Utils.bitmapToMat(bitmap, src);
+            rgb = new Mat();
+            Imgproc.cvtColor(src, rgb, Imgproc.COLOR_RGBA2RGB);
+            dst = new Mat();
+            Core.LUT(rgb, lut, dst); // single-channel lut broadcasts across all 3 channels
+            result_rgba = new Mat();
+            Imgproc.cvtColor(dst, result_rgba, Imgproc.COLOR_RGB2RGBA);
+
+            Bitmap out_bitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+            Utils.matToBitmap(result_rgba, out_bitmap);
+            return out_bitmap;
+        }
+        catch(Exception e) {
+            if( MyDebug.LOG )
+                Log.e(TAG, "applyImageProfile failed: " + e.getMessage());
+            return bitmap;
+        }
+        finally {
+            if( src != null ) src.release();
+            if( rgb != null ) rgb.release();
+            if( dst != null ) dst.release();
+            if( result_rgba != null ) result_rgba.release();
+            if( lut != null ) lut.release();
+        }
+    }
+
     private Bitmap applyColorCorrection(byte[] data, Bitmap bitmap) {
         if( MyDebug.LOG )
             Log.d(TAG, "applyColorCorrection");
@@ -885,16 +1089,27 @@ public class PostProcessing {
 
         // ColorMatrix row order: [ R, G, B, A, offset ]
         // Row 0 = output R, Row 1 = output G, Row 2 = output B, Row 3 = output A
-        // [REALCAMMI FORK] All channels set to neutral (1.00/1.00/1.00, no cross-channel mixing,
-        // no alpha change, no offset) to isolate the TonemapCurve from this correction while
-        // diagnosing the per-channel hue-shift issue. Previous tuned values were R x1.04 / G
-        // x1.00 / B x0.92 — see the class doc comment above for the full rationale.
+        // [REALCAMMI FORK] Channels set to (0.98/0.98/1.00),
+        // See the class doc comment above for the full rationale.
+        // Tune 1
         ColorMatrix cm = new ColorMatrix(new float[] {
-                0.985f, 0f,    0f,    0f, 0f,   // R: 0.99 -> 1.00
-                0f,    0.985f, 0f,    0f, 0f,   // G: 0.99 -> 1.00
-                0f,    0f,    1.00f, 0f, 0f,   // B: 1.03 -> 1.01
+                0.980f, 0f,    0f,    0f, 0f,   // R: 0.98 -2%
+                0f,    0.980f, 0f,    0f, 0f,   // G: 0.98 -2%
+                0f,    0f,    1.00f, 0f, 0f,   // B: unchanged
                 0f,    0f,    0f,    1f, 0f    // A
         });
+
+        /* [REALCAMMI FORK NOTE] This is a UNIFORM +2% saturation boost, applied equally across
+         the whole image. It stacks with applyTonemapDesaturationCompensation() (runs later in
+         the pipeline, after NR/Sharpen), which adds a SECOND, separate boost weighted by
+         luminance (0.18 coefficient, highlights only). Both are intentionally kept active:
+         this one lifts saturation everywhere, the other specifically compensates highlights
+         for the TonemapCurve's desaturation. If either one is retuned in isolation later,
+         remember the other is still stacking on top of it.*/
+
+        ColorMatrix saturationBoost = new ColorMatrix();
+        saturationBoost.setSaturation(1.02f);
+        cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(corrected);
@@ -977,6 +1192,32 @@ public class PostProcessing {
             }
         }
 
+        // [REALCAMMI FORK BUGFIX] Image Profile (Rec709/sRGB/Log/Gamma/S-Log3/JT curves) is
+        // applied here, on the captured photo bitmap, rather than live via TONEMAP_MODE - see
+        // setTonemapProfile() in Camera2Settings.java for why (confirmed AE darkening drift in
+        // photo mode with any profile active). Video mode still applies the profile live and
+        // correctly, so this must NOT run there too, or the curve would be applied twice to
+        // video snapshot photos.
+        // [REALCAMMI FORK] Image Profile (Rec709/sRGB/Log/Gamma/S-Log3/JT curves) applied here,
+        // on the captured photo bitmap, rather than live via TONEMAP_MODE - see setTonemapProfile()
+        // in Camera2Settings.java for why (confirmed AE darkening drift in photo mode with any
+        // profile active). applyImageProfile() decodes back to linear light before applying the
+        // curve, matching what the curve expects (fixed 2026-07-19, was double-gamma-encoding
+        // and blowing highlights/shadows out to near-white). Video mode still applies the
+        // profile live and correctly, so this must NOT run there too, or the curve would be
+        // applied twice to video snapshot photos.
+        if( !main_activity.getPreview().isVideo() ) {
+            float [] image_profile_curve = getResolvedImageProfileCurve();
+            if( image_profile_curve != null ) {
+                if( MyDebug.LOG )
+                    Log.d(TAG, "applying image profile post-processing");
+                bitmap = applyImageProfile(bitmap, image_profile_curve);
+                if( MyDebug.LOG ) {
+                    Log.d(TAG, "Save single image performance: time after image profile: " + (System.currentTimeMillis() - time_s));
+                }
+            }
+        }
+
         // [REALCAMMI FORK] OpenCV post-processing — applied in order: NR → Sharpen → Desaturation
         // compensation → CLAHE → BlurDetect
         // NR first: clean up noise before sharpening (sharpening amplifies noise if done first)
@@ -995,6 +1236,11 @@ public class PostProcessing {
             if( bitmap == null ) {
                 bitmap = ImageUtils.loadBitmapWithRotation(data, true);
             }
+            // [REALCAMMI FORK] Piece 4 of AI scene detection: LOW_LIGHT gets STRONG NR instead
+            // of the usual LIGHT default. All other categories (STANDARD/EXTREME_BACKLIT/INDOOR)
+            // keep the previous hardcoded behaviour unchanged.
+            NR_STRENGTH = ( main_activity.getPreview().getCameraController().getCurrentSceneCategory()
+                    == SceneDetector.SceneCategory.LOW_LIGHT ) ? NR_STRENGTH_STRONG : NR_STRENGTH_LIGHT;
             bitmap = applyOpenCVNR(bitmap);
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after OpenCV NR: " + (System.currentTimeMillis() - time_s));
@@ -1005,6 +1251,10 @@ public class PostProcessing {
             if( bitmap == null ) {
                 bitmap = ImageUtils.loadBitmapWithRotation(data, true);
             }
+            // [REALCAMMI FORK] Piece 4 of AI scene detection: INDOOR gets a modest sharpen
+            // bump (helps text/fine-detail legibility indoors); everything else keeps default.
+            sharpen_amount = ( main_activity.getPreview().getCameraController().getCurrentSceneCategory()
+                    == SceneDetector.SceneCategory.INDOOR ) ? 0.65f : 0.5f;
             bitmap = applyOpenCVSharpen(bitmap);
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after OpenCV sharpen: " + (System.currentTimeMillis() - time_s));

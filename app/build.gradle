@@ -66,6 +66,10 @@ dependencies {
 	// add QR code scanner
 	implementation 'com.google.mlkit:barcode-scanning:17.3.0'
 
+	// [REALCAMMI FORK] AI scene detection (extreme backlit / indoor / low-light) - bundled
+	// on-device model, no first-run download delay. Added 2026-07-12.
+	implementation 'com.google.mlkit:image-labeling:17.0.9'
+
 	// Local JVM Unit Tests
     testImplementation 'junit:junit:4.13.2'
 	
@@ -87,8 +91,7 @@ java {
 androidComponents {
     onVariants(selector().all(), { variant ->
         variant.outputs.each { output ->
-            // The APK output filename is set dynamically below by gradle.bat,
-            // using the name you type in when prompted ("Set app name here:")
+            // The APK output filename is set dynamically below by gradlew.bat
 			            output.outputFileName.set("RealCamMI-${variant.name}.apk") 
         } 
     }) 

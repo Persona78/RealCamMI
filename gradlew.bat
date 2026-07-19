@@ -34,9 +34,6 @@ powershell.exe -ExecutionPolicy Bypass -Command "Get-Process -Name 'cmd' | ForEa
 del /F /S /Q "app\build\outputs\apk\debug\*.apk" >nul 2>&1
 del /F /S /Q "app\build\outputs\apk\release\*.apk" >nul 2>&1
 
-:: Set your app name here
-::set /p name=" Set app name here: "
-
 :: Save the current path by removing the backslash at the end.
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"

@@ -2,6 +2,7 @@ package net.sourceforge.opencamera.realcammi.cameracontroller;
 
 import net.sourceforge.opencamera.realcammi.HDRProcessor;
 import net.sourceforge.opencamera.realcammi.MyDebug;
+import net.sourceforge.opencamera.realcammi.SceneDetector;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -134,7 +135,7 @@ public class CameraController2 extends CameraController {
     private boolean supports_tonemap_preset_curve; //private boolean supports_low_light_boost;
 
     // [REALCAMMI FORK] Minimum tonemap curve points required to support our custom profiles.
-    // Our curves (jtvideo=17, jtlog=17, jtlog2=18 points) need at least 18 points.
+    // Our curves (jtvideo=18, jtlog=17, jtlog2=18 points) need at least 18 points.
     // The original upstream value of 128 was too high for many devices including Garnet,
     // which caused the video log options to be hidden unnecessarily.
     final static int tonemap_log_max_curve_points_c = 18; // Set to match RealCam MI curves (jtvideo=17, jtlog=17, jtlog2=18 points)
@@ -146,29 +147,34 @@ public class CameraController2 extends CameraController {
     // to produce more realistic color/tone output than the device defaults.
     // See README.md "Custom tone curves" for full rationale.
     // When merging upstream changes to CameraController2.java, preserve this block.
-    private final static float[] jtvideo_values_base = new float[] {
+    //Tune 8
+    // [REALCAMMI FORK] public (not private) so PostProcessing.getResolvedImageProfileCurve()
+    // (different package: net.sourceforge.opencamera.realcammi, not .cameracontroller) can read
+    // these directly for post-capture photo processing (see setTonemapProfile() in
+    // Camera2Settings.java for why photo mode no longer applies profiles live via TONEMAP_MODE).
+    public final static float[] jtvideo_values_base = new float[] {
             0.00f, 0.000f,   // Pure Black
-            0.01f, 0.019f,   // Deep Shadow
-            0.04f, 0.064f,   // Deep Shadow
-            0.06f, 0.103f,   // Shadow
-            0.09f, 0.161f,   // Shadow-to-Midtone Transition
-            0.13f, 0.223f,   // Lower Midtone
-            0.18f, 0.282f,   // Midtone
-            0.22f, 0.313f,   // Midtone (Text / UI Zone)
-            0.28f, 0.372f,   // Center Midtone
-            0.35f, 0.470f,   // Upper Midtone
-            0.45f, 0.600f,   // Midtone-to-Highlight Transition
-            0.51f, 0.670f,   // Lower Highlight
-            0.60f, 0.760f,   // Highlight
-            0.67f, 0.825f,   // Upper Highlight
-            0.77f, 0.890f,   // Specular Highlight
-            0.88f, 0.950f,   // Near-White
+            0.01f, 0.039f,   // Deep Shadow
+            0.04f, 0.145f,   // Deep Shadow
+            0.06f, 0.207f,   // Shadow
+            0.09f, 0.288f,   // Shadow-to-Midtone Transition
+            0.13f, 0.381f,   // Lower Midtone
+            0.18f, 0.477f,   // Midtone
+            0.22f, 0.537f,   // Midtone (Text / UI Zone)
+            0.28f, 0.604f,   // Center Midtone
+            0.35f, 0.654f,   // Upper Midtone
+            0.45f, 0.707f,   // Midtone-to-Highlight Transition
+            0.51f, 0.746f,   // Lower Highlight
+            0.60f, 0.801f,   // Highlight
+            0.67f, 0.841f,   // Upper Highlight
+            0.77f, 0.896f,   // Specular Highlight
+            0.88f, 0.952f,   // Near-White
             0.97f, 0.990f,   // Near-White Limit
             1.00f, 1.000f    // Pure White
     };
 
     final float [] jtvideo_values;
-    private final static float [] jtlog_values_base = new float[] {
+    public final static float [] jtlog_values_base = new float[] {
             0.00f, 0.00f,
             0.01f, 0.015f,
             0.03f, 0.04f,
@@ -189,7 +195,7 @@ public class CameraController2 extends CameraController {
     };
 
     final float [] jtlog_values;
-    private final static float [] jtlog2_values_base = new float[] {
+    public final static float [] jtlog2_values_base = new float[] {
             0.00f, 0.00f,
             0.01f, 0.018f,
             0.03f, 0.055f,
@@ -250,6 +256,23 @@ public class CameraController2 extends CameraController {
     private final Object background_camera_lock = new Object(); // lock to synchronize between UI thread and the background "CameraBackground" thread/handler
 
     private ImageReader imageReader;
+
+    // [REALCAMMI FORK] Low-res dedicated ImageReader for AI scene detection (MLKit Image
+    // Labeling), separate from the main JPEG imageReader above and from the display preview
+    // surface. Only added to the capture session in the normal (Standard photo mode, non-video,
+    // non-RAW, non-extension) branch — see createCaptureSession(). Throttled in its
+    // OnImageAvailableListener so MLKit isn't fed the full preview frame rate.
+    private ImageReader analysisImageReader;
+    private long last_analysis_frame_time_ms; // throttling: only process one frame per interval
+    // [REALCAMMI FORK] volatile: written on the "CameraBackground" handler thread (inside the
+    // analysis listener), read from the ImageSaver thread via getCurrentSceneCategory() (called
+    // from PostProcessing.postProcessBitmap()) - a different thread. Without volatile, the Java
+    // Memory Model doesn't guarantee a write here is visible to that read, risking a stale or
+    // null value on the reading thread.
+    private volatile SceneDetector sceneDetector; // [REALCAMMI FORK] Piece 3: classifies analysis frames
+    private boolean analysis_broken; // [REALCAMMI FORK] set true after an unrecoverable MLKit/SceneDetector failure - stops retrying every frame for the rest of this camera session
+    private boolean analysis_enabled; // [REALCAMMI FORK] set via setAnalysisEnabled(), mirrors setCameraExtension()'s pattern - only create/feed the analysis reader when some feature actually needs it (currently: Auto HDR)
+    private SceneCategoryCallback scene_category_callback; // [REALCAMMI FORK] optional external observer, e.g. Preview.java's debug toast
 
     private BurstType burst_type = BurstType.BURSTTYPE_NONE;
     // for BURSTTYPE_EXPO:
@@ -530,10 +553,10 @@ public class CameraController2 extends CameraController {
     }
 
     private static float RGBtoGain(float value) {
-        final float max_gain_c = 8.5f; // RealCamMI 10.0f default value, set 8.5f to try to get Less Digital Noise (Grain):
+        final float max_gain_c = 9.0f; // RealCamMI 10.0f default value, set 9.0f to try to get Less Digital Noise (Grain):
         // In extremely dark areas of the image (where maximum gain is activated), the camera will amplify the
         // signal slightly less. This helps reduce visual noise (those colored dots or "grain" that appear in dark areas).
-        // Slightly Darker Shadows: Since the gain has been limited to 8.5f instead of 10.0f, absolute blacks or very
+        // Slightly Darker Shadows: Since the gain has been limited to 9.0f instead of 10.0f, absolute blacks or very
         // deep shadows will not be lightened as much. The image may take on a slightly higher-contrast look in these dark zones.
         if( value < 1.0e-5f ) {
             return max_gain_c;
@@ -866,23 +889,21 @@ public class CameraController2 extends CameraController {
                         }*/
                         // see note in takePictureBurstBracketing() for why we also set preview for slow burst with expo bracketing -
                         // helps Samsung Galaxy devices
+                        // Tune 5
                         if( previewBuilder != null ) { // make sure camera wasn't released in the meantime
 
+                                //previewBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+
                                 // Starting image enhancement process
-                                // activates the camera's automatic exposure control (Auto-Exposure - AE).
-                                previewBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
-                                // COLOR FIX: keep exposure compensation stable at -2 steps
-                                //previewBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -2);
                                 // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
                                 previewBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
                                 // Corrects chromatic aberrations (colored fringes) with the correct constant.
-                                previewBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-                                // Forces Tonemap to rebalance the gamma channel in the shadows.
-                                previewBuilder.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
-                                // COLOR CORRECTION: Forces the White Balance to fix the native Preview profile.
-                                previewBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
-                                // Tell the camera to cancel/idle the focus trigger
-                                // previewBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+                                //previewBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+                                // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
+                                // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
+                                // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
+                                // own pipeline, showing up as a visible color blotch in a corner of the photo.
+                                previewBuilder.set(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
 
                             // Enable Optical Image Stabilization if phone's hardware supports it.
                         /*if (supports_optical_stabilization) {
@@ -1719,6 +1740,7 @@ public class CameraController2 extends CameraController {
                 Log.d(TAG, "close camera complete: " + camera_to_close);
         }
         closePictureImageReader();
+        closeAnalysisImageReader(); // [REALCAMMI FORK]
         /*if( previewImageReader != null ) {
             previewImageReader.close();
             previewImageReader = null;
@@ -2857,15 +2879,9 @@ public class CameraController2 extends CameraController {
         if( MyDebug.LOG )
             Log.d(TAG, "is_video_stabilization_supported: " + camera_features.is_video_stabilization_supported);
 
+        // INFO_SUPPORTED_HARDWARE_LEVEL_FULL/LEGACY MAKES GARNET FAIL VIDEO RECORDING
         camera_features.is_photo_video_recording_supported = CameraControllerManager2.isHardwareLevelSupported(characteristics, CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED);
-       /* if( is_samsung ||is_samsung_galaxy_s ||is_samsung_galaxy_f || is_xiaomi || is_ulefone ) {
-            // Xiaomi/Qualcomm HALs may advertise LIMITED/FULL hardware support, but still fail
-            // video sessions that include the extra ImageReader surface used for photo snapshots
-            // while recording. Logcat then shows MPEG4Writer receiving 0 video frames and
-            // MediaRecorder.stop() failing with -1007. For these devices, keep the video
-            // recording session simple: preview surface + MediaRecorder surface only.
-            camera_features.is_photo_video_recording_supported = false;
-        }*/
+
         supports_photo_video_recording = camera_features.is_photo_video_recording_supported;
 
         int [] white_balance_modes = characteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
@@ -4217,6 +4233,35 @@ public class CameraController2 extends CameraController {
         return is_xiaomi || is_ulefone;
     }
 
+    // [REALCAMMI FORK] Piece 3: called from Preview.java's post-open sync block, mirroring how
+    // setCameraExtension() is driven by applicationInterface.isCameraExtensionPref() there.
+    // Enables/disables whether the analysis ImageReader (created in createAnalysisImageReader(),
+    // Piece 1) actually gets fed to the SceneDetector. Doesn't itself create the reader/session
+    // surface - that still only happens in the eligible branch of createCaptureSession() (normal
+    // photo, non-RAW, non-extension). This flag additionally gates it on whether any feature
+    // that consumes scene classification (currently: Auto HDR) is actually turned on, so users
+    // who never enable Auto HDR don't pay the MLKit/extra-surface cost for nothing.
+    @Override
+    public void setAnalysisEnabled(boolean enabled) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "setAnalysisEnabled: " + enabled);
+        this.analysis_enabled = enabled;
+        if( !enabled && sceneDetector != null ) {
+            sceneDetector.close();
+            sceneDetector = null;
+        }
+    }
+
+    @Override
+    public SceneDetector.SceneCategory getCurrentSceneCategory() {
+        return sceneDetector != null ? sceneDetector.getCurrentCategory() : SceneDetector.SceneCategory.STANDARD;
+    }
+
+    @Override
+    public void setSceneCategoryCallback(SceneCategoryCallback callback) {
+        this.scene_category_callback = callback;
+    }
+
     @Override
     public int getCameraExtension() {
         if( isCameraExtension() )
@@ -4422,6 +4467,103 @@ public class CameraController2 extends CameraController {
             }
             // see note above for imageReader.setOnImageAvailableListener for why we use a null handler
             imageReaderRaw.setOnImageAvailableListener(onRawImageAvailableListener = new OnRawImageAvailableListener(), null);
+        }
+    }
+
+    // [REALCAMMI FORK] Low-res YUV_420_888 ImageReader dedicated to AI scene detection (MLKit
+    // Image Labeling). 320x240 is plenty for scene-level classification (extreme backlit /
+    // indoor / low-light) and keeps the per-frame conversion/inference cost small. YUV_420_888
+    // is used (not JPEG) because MLKit's InputImage.fromMediaImage() accepts it directly, with
+    // no Bitmap decode/encode round trip needed.
+    // Only call this when captureSession not created, same restriction as createPictureImageReader().
+    // Piece 1 of the AI scene detection feature: this only creates the reader and wires a
+    // throttled listener that currently just closes the frame — actual MLKit classification is
+    // added on top of this in a later piece.
+    private static final int ANALYSIS_WIDTH = 320;
+    private static final int ANALYSIS_HEIGHT = 240;
+    private static final long ANALYSIS_MIN_INTERVAL_MS = 750; // throttle: at most ~1.3 frames/sec fed to MLKit
+
+    private void createAnalysisImageReader() {
+        if( MyDebug.LOG )
+            Log.d(TAG, "createAnalysisImageReader");
+        if( hasCaptureSession() ) {
+            if( MyDebug.LOG )
+                Log.e(TAG, "can't create analysis image reader when captureSession running!");
+            throw new RuntimeException(); // throw as RuntimeException, as this is a programming error
+        }
+        closeAnalysisImageReader();
+        analysis_broken = false; // [REALCAMMI FORK] fresh session, fresh chance
+        analysisImageReader = ImageReader.newInstance(ANALYSIS_WIDTH, ANALYSIS_HEIGHT, ImageFormat.YUV_420_888, 2);
+        if( MyDebug.LOG ) {
+            Log.d(TAG, "created new analysisImageReader: " + analysisImageReader);
+            Log.d(TAG, "analysisImageReader surface: " + analysisImageReader.getSurface().toString());
+        }
+        // Runs on the background "CameraBackground" handler/thread (not null/UI thread like the
+        // main imageReader) — MLKit inference, even throttled, shouldn't risk blocking the UI.
+        analysisImageReader.setOnImageAvailableListener(reader -> {
+            android.media.Image image = reader.acquireLatestImage();
+            if( image == null )
+                return;
+            if( analysis_broken ) {
+                // [REALCAMMI FORK] a previous frame already hit an unrecoverable MLKit/
+                // SceneDetector error this session - stop retrying every throttled frame,
+                // just let normal (non-AI-assisted) capture continue.
+                image.close();
+                return;
+            }
+            long now = System.currentTimeMillis();
+            if( now - last_analysis_frame_time_ms < ANALYSIS_MIN_INTERVAL_MS ) {
+                // throttled: drop this frame, don't hand it to MLKit
+                image.close();
+                return;
+            }
+            last_analysis_frame_time_ms = now;
+            try {
+                // [REALCAMMI FORK] Piece 3: lazily create the SceneDetector on first use (mirrors
+                // analysisImageReader itself - no point creating the MLKit labeler until we
+                // actually have a frame and analysis_enabled is true, which it must be here
+                // since the reader is only ever created when analysis_enabled - see
+                // createCaptureSession()).
+                if( sceneDetector == null )
+                    sceneDetector = new SceneDetector(category -> {
+                        if( scene_category_callback != null )
+                            scene_category_callback.onSceneCategoryChanged(category);
+                    });
+                // rotation_degrees=0: the backlit histogram check doesn't care about orientation,
+                // and MLKit's indoor content labelling is reasonably robust to it. Revisit if the
+                // indoor category proves unreliable in practice.
+                sceneDetector.classifyFrame(image, 0, capture_result_iso, capture_result_exposure_time,
+                        capture_result_has_iso && capture_result_has_exposure_time);
+            }
+            catch(Throwable t) {
+                // [REALCAMMI FORK] This whole block runs on a background thread - an uncaught
+                // exception here (e.g. ImageLabeling.getClient() failing for any reason, never
+                // tested on real hardware as of this writing) would crash the entire app
+                // process, not just this feature. Fail soft instead: log it, stop trying for
+                // the rest of this camera session, let normal capture continue unaffected.
+                if( MyDebug.LOG )
+                    Log.e(TAG, "AI scene detection failed, disabling for this session: " + t.getMessage());
+                analysis_broken = true;
+                if( sceneDetector != null ) {
+                    sceneDetector.close();
+                    sceneDetector = null;
+                }
+
+                image.close();
+            }
+        }, handler);
+    }
+
+    private void closeAnalysisImageReader() {
+        if( MyDebug.LOG )
+            Log.d(TAG, "closeAnalysisImageReader");
+        if( analysisImageReader != null ) {
+            analysisImageReader.close();
+            analysisImageReader = null;
+        }
+        if( sceneDetector != null ) {
+            sceneDetector.close();
+            sceneDetector = null;
         }
     }
 
@@ -5742,10 +5884,23 @@ public class CameraController2 extends CameraController {
                 else {
                     closePictureImageReader();
                 }
+                closeAnalysisImageReader(); // [REALCAMMI FORK] AI scene detection not used during video recording
             }
             else {
                 // in some cases need to recreate picture imageReader and the texture default buffer size (e.g., see test testTakePhotoPreviewPaused())
                 createPictureImageReader();
+                // [REALCAMMI FORK] Only create the analysis reader for the plain normal-photo
+                // case: not RAW (avoids a 4th surface / device surface-count limits), not an
+                // extension session (extension sessions have their own strict surface
+                // restrictions — see the checks above this try block). Also gated on
+                // analysis_enabled, set via setAnalysisEnabled() - no consuming feature
+                // (currently only Auto HDR) means no reason to pay the extra surface/MLKit cost.
+                if( analysis_enabled && sessionType != SessionType.SESSIONTYPE_EXTENSION && !(want_raw && raw_size != null) ) {
+                    createAnalysisImageReader();
+                }
+                else {
+                    closeAnalysisImageReader();
+                }
             }
             if( texture != null ) {
                 // need to set the texture size
@@ -5845,6 +6000,13 @@ public class CameraController2 extends CameraController {
                         captureSession = session;
                         extensionSession = eSession;
                         previewBuilder.addTarget(surface_texture);
+                        if( analysisImageReader != null && sessionType != SessionType.SESSIONTYPE_EXTENSION ) {
+                            // [REALCAMMI FORK] feed the low-res AI scene-detection reader continuously,
+                            // same repeating preview request — throttling happens in its own listener
+                            if( MyDebug.LOG )
+                                Log.d(TAG, "add analysis surface to previewBuilder: " + analysisImageReader.getSurface());
+                            previewBuilder.addTarget(analysisImageReader.getSurface());
+                        }
                         if( video_recorder != null ) {
                             if( MyDebug.LOG ) {
                                 Log.d(TAG, "add video recorder surface to previewBuilder: " + video_recorder_surface);
@@ -5970,7 +6132,14 @@ public class CameraController2 extends CameraController {
                     surfaces = Arrays.asList(preview_surface, imageReader.getSurface(), imageReaderRaw.getSurface());
                 }
                 else {
-                    surfaces = Arrays.asList(preview_surface, imageReader.getSurface());
+                    // [REALCAMMI FORK] include the AI scene-detection analysis surface when we
+                    // created one above (plain normal-photo, non-RAW, non-extension case only)
+                    if( analysisImageReader != null ) {
+                        surfaces = Arrays.asList(preview_surface, imageReader.getSurface(), analysisImageReader.getSurface());
+                    }
+                    else {
+                        surfaces = Arrays.asList(preview_surface, imageReader.getSurface());
+                    }
                 }
                 if( MyDebug.LOG ) {
                     Log.d(TAG, "texture: " + texture);

@@ -31,19 +31,25 @@ public class PreferenceSubScreen extends PreferenceFragmentCompat implements Sha
      */
     @Override
     public void onDisplayPreferenceDialog (androidx.preference.Preference preference) {
+        // [REALCAMMI FORK BUGFIX] Removed the two dialog.setTargetFragment(this, 0) calls that
+        // used to be here. setTargetFragment() is deprecated (API 31+) and this project's own
+        // history already removed it "throughout" everywhere else - this file was missed. It's
+        // also unnecessary: ArraySeekBarPreferenceDialog/MyEditTextPreferenceDialog both resolve
+        // their Preference via getPreference() (by key, through ARG_KEY), not via the target
+        // fragment - MyPreferenceFragment.java's version of this same method never had this call
+        // and works correctly. Every screen that extends this class (Photo, GUI, Licences,
+        // Location, Preview, Processing, Remote Control, Settings Manager, Video) was affected -
+        // any ArraySeekBarPreference/MyEditTextPreference dialog on any of those screens could
+        // crash the app when opened, not just the Photo screen's gamma value picker.
         if (preference instanceof net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference) {
             net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog dialog =
                     net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog.newInstance(preference.getKey());
-
-            dialog.setTargetFragment(this, 0);
 
             dialog.show(getParentFragmentManager(), "ArraySeekBarPreferenceDialog");
         }
         else if (preference instanceof net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference) {
             net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog dialog =
                     net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog.newInstance(preference.getKey());
-
-            dialog.setTargetFragment(this, 0);
 
             dialog.show(getParentFragmentManager(), "MyEditTextPreferenceDialog");
         }

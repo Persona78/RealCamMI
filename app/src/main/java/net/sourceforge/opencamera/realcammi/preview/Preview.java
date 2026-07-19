@@ -7,6 +7,7 @@ import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
 //import net.sourceforge.opencamera.realcammi.MainActivity;
 import net.sourceforge.opencamera.realcammi.HDRProcessor;
 import net.sourceforge.opencamera.realcammi.MyApplicationInterface;
+import net.sourceforge.opencamera.realcammi.SceneDetector;
 import net.sourceforge.opencamera.realcammi.MyDebug;
 import net.sourceforge.opencamera.realcammi.R;
 import net.sourceforge.opencamera.realcammi.TakePhoto;
@@ -63,6 +64,8 @@ import android.graphics.SurfaceTexture;
 import android.hardware.SensorEvent;
 import android.hardware.SensorManager;
 import android.hardware.camera2.CameraExtensionCharacteristics;
+import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.CaptureRequest;
 import android.location.Location;
 import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
@@ -133,7 +136,6 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private static final String TAG = "Preview";
 
     private final boolean using_android_l;
-
     private final ApplicationInterface applicationInterface;
     private final CameraSurface cameraSurface;
     private CanvasView canvasView;
@@ -207,7 +209,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private long video_time_last_maxfilesize_restart; // when the video last restarted due to maxfilesize (or otherwise 0) - note this is time in ms relative to the recorded video, and not system time
     private boolean video_recorder_is_paused; // whether video_recorder is running but has paused
     private boolean video_restart_on_max_filesize;
-    private static final long min_safe_restart_video_time = 1000; // if the remaining max time after restart is less than this, don't restart
+    private static final long min_safe_restart_video_time = 1000L; // if the remaining max time after restart is less than this, don't restart
     /** Stores the file (or similar) to record a video.
      *  Important to call close() when the video recording is finished, to free up any resources
      *  (e.g., supplied ParcelFileDescriptor).
@@ -260,7 +262,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private final Timer batteryCheckVideoTimer = new Timer();
     private TimerTask batteryCheckVideoTimerTask;
     private long take_photo_time; // if taking photo on timer, planned time when we'll take the photo
-    private long last_take_photo_time = -1; // last time we called takePhoto()
+    private long last_take_photo_time = -1L; // last time we called takePhoto()
     private boolean pending_auto_hdr_capture = false; // [REALCAMMI FORK] true if we reopened the camera specifically to retry a photo in Auto HDR extension mode
     private boolean want_auto_hdr_extension_now = false; // [REALCAMMI FORK] true while the pending/in-progress Auto HDR capture wants the extension session forced on
     private Handler processing_timer_handler; // [REALCAMMI FORK] drives the repeating "still processing" toast
@@ -382,11 +384,11 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private boolean supports_tonemap_curve;
     private float [] supported_apertures;
     private boolean has_focus_area;
-    private long focus_area_time = -1; // time when has_focus_area last set to true
+    private long focus_area_time = -1L; // time when has_focus_area last set to true
     private float focus_camera_x;
     private float focus_camera_y;
-    private long focus_complete_time = -1;
-    private long focus_started_time = -1;
+    private long focus_complete_time = -1L;
+    private long focus_started_time = -1L;
     private int focus_success = FOCUS_DONE;
     private static final int FOCUS_WAITING = 0;
     private static final int FOCUS_SUCCESS = 1;
@@ -395,7 +397,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private String set_flash_value_after_autofocus = "";
     private boolean take_photo_after_autofocus; // set to take a photo when the in-progress autofocus has completed; if setting, remember to call camera_controller.setCaptureFollowAutofocusHint()
     private boolean successfully_focused;
-    private long successfully_focused_time = -1;
+    private long successfully_focused_time = -1L;
 
     // accelerometer and geomagnetic sensor info
     private static final float sensor_alpha = 0.8f; // for filter
@@ -594,8 +596,10 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     /** Return a focus area from supplied point. Supplied coordinates should be in camera
      *  coordinates.
      */
+    // change 1
     private ArrayList<CameraController.Area> getAreas(float focus_x, float focus_y) {
-        int focus_size = 50;
+
+        int focus_size = 90; //default 50
         if( MyDebug.LOG ) {
             Log.d(TAG, "focus x, y: " + focus_x + ", " + focus_y);
         }
@@ -2197,6 +2201,22 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
             camera_controller.setCameraExtension(false, 0);
         }
 
+        // [REALCAMMI FORK] Piece 3/4: feed the AI scene-detection analysis reader when EITHER
+        // Auto HDR (EXTREME_BACKLIT) or the general AI scene detection preference (LOW_LIGHT/
+        // INDOOR, applied in PostProcessing) is enabled. Mirrors the extension-mode sync above.
+        camera_controller.setAnalysisEnabled( applicationInterface instanceof MyApplicationInterface
+                && ( ((MyApplicationInterface) applicationInterface).getAutoHDRPref()
+                || ((MyApplicationInterface) applicationInterface).getAISceneDetectionPref() ) );
+        // [REALCAMMI FORK] Debug-only visibility into which scene category the AI landed on,
+        // whenever it changes - gated behind MyDebug.LOG so it never shows in release builds.
+        if( MyDebug.LOG ) {
+            camera_controller.setSceneCategoryCallback(category ->
+                    showToast(null, "AI scene: " + category, true, false));
+        }
+        else {
+            camera_controller.setSceneCategoryCallback(null);
+        }
+
         setupCameraParameters();
 
         updateFlashForVideo();
@@ -2208,10 +2228,19 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
             }
         }
 
-        // must be done after switching to video mode (so is_video is set correctly)
+        // [REALCAMMI FORK BUGFIX] This used to be gated behind `if( this.is_video )`, a leftover
+        // from upstream Open Camera where this preference only ever applied to video. This
+        // fork's "Image profile reorganization" moved the preference UI to the Photo settings
+        // screen (title changed to "Image profile"), but this application code was never
+        // updated to match - meaning in pure photo-only usage (never touching video mode this
+        // camera session), tonemap_profile stayed permanently TONEMAPPROFILE_OFF, and changing
+        // the Gamma value (or switching profile) in Photo settings had no effect at all. The
+        // method names below (getVideoTonemapProfile() etc.) are stale from that history but
+        // the underlying preferences are the ones surfaced in Photo settings now - not renamed
+        // here to keep this a minimal, isolated fix.
         if( MyDebug.LOG )
             Log.d(TAG, "is_video?: " + is_video);
-        if( this.is_video ) {
+        {
             CameraController.TonemapProfile tonemap_profile = CameraController.TonemapProfile.TONEMAPPROFILE_OFF;
             if( supports_tonemap_curve ) {
                 tonemap_profile = applicationInterface.getVideoTonemapProfile();
@@ -4527,7 +4556,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                     final int target_zoom_value = new_zoom_factor;
                     //final float start_zoom = zoom_ratios.get(start_zoom_value)/100.0f;
                     final long start_time = System.currentTimeMillis();
-                    final long delay = 16;
+                    final long delay = 16L;
 
                     zoom_transition_runnable = new Runnable() {
                         public void run() {
@@ -4539,7 +4568,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                             int this_zoom_value;
                             long time = System.currentTimeMillis() - start_time;
                             time += delay; // so we have a quicker transition
-                            final long duration = 200;
+                            final long duration = 200L;
                             if( time >= duration ) {
                                 this_zoom_value = target_zoom_value;
                             }
@@ -6400,7 +6429,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                     }
                 }
             }
-            final long battery_check_interval_ms = 60 * 1000;
+            final long battery_check_interval_ms = 60 * 1000L;
             // Since we only first check after battery_check_interval_ms, this means users will get some video recorded even if the battery is already too low.
             // But this is fine, as typically short videos won't be corrupted if the device shuts off, and good to allow users to try to record a bit more if they want.
             batteryCheckVideoTimer.schedule(batteryCheckVideoTimerTask = new BatteryCheckVideoTimerTask(), battery_check_interval_ms, battery_check_interval_ms);
@@ -6861,10 +6890,10 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 && ((MyApplicationInterface) applicationInterface).getAutoHDRPref() && !camera_controller.isCameraExtension()
                 && ((MyApplicationInterface) applicationInterface).getPhotoMode() == MyApplicationInterface.PhotoMode.Standard
                 && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime()
-                && !HDRProcessor.sceneIsLowLight(camera_controller.captureResultIso(), camera_controller.captureResultExposureTime())
+                && camera_controller.getCurrentSceneCategory() == SceneDetector.SceneCategory.EXTREME_BACKLIT
                 && supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_HDR) ) {
             if( MyDebug.LOG )
-                Log.d(TAG, "Auto HDR: bright scene detected, reopening in HDR extension mode before capture");
+                Log.d(TAG, "Auto HDR: AI detected extreme backlit scene, reopening in HDR extension mode before capture");
             pending_auto_hdr_capture = true;
             want_auto_hdr_extension_now = true;
             startProcessingTimerToast("Auto HDR");
@@ -8536,7 +8565,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
             if( MyDebug.LOG )
                 Log.d(TAG, "refreshPreviewBitmapTask still running, wait before running runnable");
             final Handler handler = new Handler();
-            final long delay = 500;
+            final long delay = 500L;
             handler.postDelayed(new Runnable() {
                 @Override
                 public void run() {

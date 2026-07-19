@@ -1,9 +1,0 @@
- O valor do Gamma é definido por uma curva matemática que compensa a forma como o olho humano percebe a luz.
- Os valores mais comuns funcionam da seguinte forma:Gamma 2.2: É o padrão universal para monitores, web,
- sistemas Windows e fotografia. Oferece um equilíbrio natural entre realces e sombras, mantendo as cores e os
- tons fiéis à intenção original.Gamma 2.4: É o padrão adotado pela indústria de cinema e televisão. 
- Escurece ligeiramente os tons médios, aumentando o contraste percebido e dando mais profundidade às
- imagens em ambientes com pouca luz.Valores mais baixos (ex: 2.0 ou 1.8): Aumentam a luminosidade geral da 
- imagem e revelam mais detalhes nas sombras, sendo úteis para ambientes muito claros ou para combater reflexos, 
- mas podem deixar as imagens com aspecto "lavado" e sem contraste.Valores mais altos (ex: 2.6): Escurecem os tons médios.
- Embora saturem mais as cores, podem esconder detalhes importantes nas áreas mais escuras da tela (o chamado black crush).

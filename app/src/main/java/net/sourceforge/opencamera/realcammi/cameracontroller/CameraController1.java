@@ -1,6 +1,7 @@
 package net.sourceforge.opencamera.realcammi.cameracontroller;
 
 import net.sourceforge.opencamera.realcammi.MyDebug;
+import net.sourceforge.opencamera.realcammi.SceneDetector;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -771,6 +772,23 @@ public class CameraController1 extends CameraController {
     @Override
     public boolean isCameraExtension() {
         return false;
+    }
+
+    @Override
+    public SceneDetector.SceneCategory getCurrentSceneCategory() {
+        // [REALCAMMI FORK] AI scene detection needs the dedicated analysis ImageReader added
+        // in CameraController2 (Camera2 API) - not implemented for the legacy Camera1 API.
+        return SceneDetector.SceneCategory.STANDARD;
+    }
+
+    @Override
+    public void setSceneCategoryCallback(SceneCategoryCallback callback) {
+        // no-op - see getCurrentSceneCategory() above
+    }
+
+    @Override
+    public void setAnalysisEnabled(boolean enabled) {
+        // no-op - AI scene detection needs the Camera2-only analysis ImageReader
     }
 
     @Override

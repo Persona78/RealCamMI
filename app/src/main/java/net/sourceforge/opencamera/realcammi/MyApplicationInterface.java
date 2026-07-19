@@ -690,6 +690,9 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         if( getColorCorrectionPref() )
             return 100; // capture at full quality, since the image will be re-saved after color correction post-processing
 
+        if( getOpenCVNRPref() || getOpenCVSharpenPref() || getOpenCVCLAHEPref() )
+            return 100;
+
         if( getImageFormatPref() != ImageSaver.Request.ImageFormat.STD )
             return 100;
 
@@ -897,6 +900,13 @@ public class MyApplicationInterface extends BasicApplicationInterface {
                 return CameraController.TonemapProfile.TONEMAPPROFILE_LOG;
             case "gamma":
                 return CameraController.TonemapProfile.TONEMAPPROFILE_GAMMA;
+            case "slog3":
+                // [REALCAMMI FORK BUGFIX] TONEMAPPROFILE_SLOG3 and its curve logic
+                // (getSlog3Profile() in Camera2Settings.java) were fully implemented, but this
+                // case was missing here and "slog3" was never added to the preference_video_log
+                // entries/values arrays - so S-Log3 was completely unreachable from the UI
+                // despite being a real, working feature. Both fixed together.
+                return CameraController.TonemapProfile.TONEMAPPROFILE_SLOG3;
             case "jtvideo":
                 return CameraController.TonemapProfile.TONEMAPPROFILE_JTVIDEO;
             case "jtlog":
@@ -916,20 +926,11 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             case "rec709":
             case "srgb":
             case "gamma":
+            case "slog3":
             case "jtvideo":
             case "jtlog":
             case "jtlog2":
                 return 0.0f;
-            /*case "fine":
-                return 1.0f;
-            case "low":
-                return 5.0f;
-            case "medium":
-                return 10.0f;
-            case "strong":
-                return 100.0f;
-            case "extra_strong":
-                return 500.0f;*/
             // need a range of values as behaviour can vary between devices - e.g., "fine" has more effect on Nexus 6 than
             // other devices such as OnePlus 3T or Galaxy S10e
             // recalibrated in v1.48 to correspond to improvements made in CameraController2
@@ -1251,7 +1252,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
                 return ImageSaver.Request.RemoveDeviceExif.OFF;
         }
     }
-
+    // Tune 7
     @Override
     public boolean getGeotaggingPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.LocationPreferenceKey, false);
@@ -1307,7 +1308,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
      *  COLOR_CORRECTION_TRANSFORM, since that field is ignored by the HAL when AWB is in AUTO mode.
      */
     public boolean getColorCorrectionPref() {
-        return sharedPreferences.getBoolean(PreferenceKeys.ColorCorrectionPreferenceKey, true);
+        return sharedPreferences.getBoolean(PreferenceKeys.ColorCorrectionPreferenceKey, false);
     }
 
     // [REALCAMMI FORK] OpenCV post-processing getters
@@ -1316,7 +1317,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     }
 
     public boolean getOpenCVNRPref() {
-        return sharedPreferences.getBoolean(PreferenceKeys.OpenCVNRPreferenceKey, true);
+        return sharedPreferences.getBoolean(PreferenceKeys.OpenCVNRPreferenceKey, false);
     }
 
     public boolean getOpenCVCLAHEPref() {
@@ -1325,6 +1326,14 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     public boolean getAutoHDRPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.AutoHDRPreferenceKey, false);
+    }
+
+    // [REALCAMMI FORK] Governs whether the analysis reader feeds SceneDetector for the
+    // LOW_LIGHT/INDOOR categories (NR strength / sharpen amount adjustments in PostProcessing).
+    // Independent of Auto HDR (EXTREME_BACKLIT) - see setAnalysisEnabled() in Preview.java,
+    // which enables the analysis reader when EITHER this or getAutoHDRPref() is true.
+    public boolean getAISceneDetectionPref() {
+        return sharedPreferences.getBoolean(PreferenceKeys.AISceneDetectionPreferenceKey, true);
     }
 
     public boolean getOpenCVBlurDetectPref() {

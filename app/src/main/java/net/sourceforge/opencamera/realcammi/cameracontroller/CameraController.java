@@ -1,6 +1,7 @@
 package net.sourceforge.opencamera.realcammi.cameracontroller;
 
 import net.sourceforge.opencamera.realcammi.MyDebug;
+import net.sourceforge.opencamera.realcammi.SceneDetector;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -62,7 +63,7 @@ public abstract class CameraController {
     public volatile int test_texture_view_buffer_h;
     public volatile boolean test_force_run_post_capture; // for Camera2 API, test using adjustPreview() / RequestTagType.RUN_POST_CAPTURE
     public static volatile boolean test_force_slow_preview_start; // for Camera2 API, test waiting for test_force_slow_preview_start_ms when starting preview
-    protected static final long test_force_slow_preview_start_ms = 6000;
+    protected static final long test_force_slow_preview_start_ms = 6000L;
 
     /** Class for caching a subset of CameraFeatures, that are slow to read.
      *  For now only used for vendor extensions which are slow to read.
@@ -355,6 +356,13 @@ public abstract class CameraController {
         void onError();
     }
 
+    // [REALCAMMI FORK] Notifies when SceneDetector's classification changes (after hysteresis).
+    // Set via setSceneCategoryCallback(). Only ever fires on CameraController2 (Camera2 API) -
+    // CameraController1's implementation never creates a SceneDetector, so never calls this.
+    public interface SceneCategoryCallback {
+        void onSceneCategoryChanged(SceneDetector.SceneCategory category);
+    }
+
     public static class Face {
         public final int score;
         /* The rect has values from [-1000,-1000] (for top-left) to [1000,1000] (for bottom-right) for whatever is
@@ -476,6 +484,14 @@ public abstract class CameraController {
     public abstract void setCameraExtension(boolean enabled, int extension);
     public abstract boolean isCameraExtension();
     public abstract int getCameraExtension();
+    // [REALCAMMI FORK] Piece 3 of AI scene detection: only meaningfully implemented in
+    // CameraController2 (Camera2 API); CameraController1 (old API) always returns STANDARD.
+    public abstract SceneDetector.SceneCategory getCurrentSceneCategory();
+    public abstract void setSceneCategoryCallback(SceneCategoryCallback callback);
+    // [REALCAMMI FORK] Missing from the base class in the first pass - caught by a real build
+    // failure ("cannot find symbol") once compiled, since camera_controller in Preview.java is
+    // typed as this base class, not CameraController2.
+    public abstract void setAnalysisEnabled(boolean enabled);
     // whether to take a burst of images, and if so, what type
     public enum BurstType {
         BURSTTYPE_NONE, // no burst
