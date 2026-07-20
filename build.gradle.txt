@@ -63,9 +63,6 @@ dependencies {
     // needed to fix errors since upgrading to appcompat:1.7.0, see https://stackoverflow.com/questions/75263047/duplicate-class-in-kotlin-android
     implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.9.0"))
 
-	// add QR code scanner
-	implementation 'com.google.mlkit:barcode-scanning:17.3.0'
-
 	// [REALCAMMI FORK] AI scene detection (extreme backlit / indoor / low-light) - bundled
 	// on-device model, no first-run download delay. Added 2026-07-12.
 	implementation 'com.google.mlkit:image-labeling:17.0.9'
