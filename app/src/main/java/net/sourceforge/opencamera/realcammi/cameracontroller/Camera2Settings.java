@@ -1234,6 +1234,11 @@ public class Camera2Settings {
                         if( MyDebug.LOG )
                             Log.d(TAG, "setting JTLog2 profile");
                         break;
+                    case TONEMAPPROFILE_SLOG3C:
+                        values = camera_controller.slog3_as_curve_values;
+                        if( MyDebug.LOG )
+                            Log.d(TAG, "setting slog3 as curve profile");
+                        break;
                 }
 
                 // sRGB:

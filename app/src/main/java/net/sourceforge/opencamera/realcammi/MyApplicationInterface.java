@@ -485,9 +485,11 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         return sharedPreferences.getString(PreferenceKeys.WhiteBalancePreferenceKey, CameraController.WHITE_BALANCE_DEFAULT);
     }
 
+    // minimum allowed value for white balance -  1000 (very cool blue tones if is image is to red/hot.)
+    // maximum allowed value for white balance - 15000 (very warm red/orange tones if image is to blue/cold.)
     @Override
     public int getWhiteBalanceTemperaturePref() {
-        return sharedPreferences.getInt(PreferenceKeys.WhiteBalanceTemperaturePreferenceKey, 5000);
+        return sharedPreferences.getInt(PreferenceKeys.WhiteBalanceTemperaturePreferenceKey, 4500);
     }
 
     @Override
@@ -1307,6 +1309,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
      *  post-processing step in PostProcessing.postProcessBitmap() rather than via Camera2
      *  COLOR_CORRECTION_TRANSFORM, since that field is ignored by the HAL when AWB is in AUTO mode.
      */
+    // Tune 11
     public boolean getColorCorrectionPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.ColorCorrectionPreferenceKey, false);
     }
@@ -1322,6 +1325,11 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     public boolean getOpenCVCLAHEPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.OpenCVCLAHEPreferenceKey, false);
+    }
+
+    // [REALCAMMI FORK] natural depth-of-field / portrait background blur (see DepthEffect.java)
+    public boolean getDepthBlurPref() {
+        return sharedPreferences.getBoolean(PreferenceKeys.DepthBlurPreferenceKey, false);
     }
 
     public boolean getAutoHDRPref() {

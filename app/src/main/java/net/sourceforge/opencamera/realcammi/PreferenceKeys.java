@@ -135,6 +135,8 @@ public class PreferenceKeys {
     public static final String OpenCVNRPreferenceKey        = "preference_opencv_nr";
 
     public static final String OpenCVCLAHEPreferenceKey     = "preference_opencv_clahe";
+    // [REALCAMMI FORK] natural depth-of-field / portrait background blur, applied post-capture
+    public static final String DepthBlurPreferenceKey       = "preference_depth_blur";
 
     public static final String OpenCVBlurDetectPreferenceKey = "preference_opencv_blur_detect";
 

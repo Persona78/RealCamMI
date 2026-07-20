@@ -1289,6 +1289,34 @@ public class PostProcessing {
             detectAndWarnBlur(bitmap);
         }
 
+        // [REALCAMMI FORK] Natural depth-of-field / portrait background blur (see
+        // DepthEffect.java). Deliberately runs LAST, after blur detection above - detectAndWarnBlur()
+        // checks whether the PHOTO ACCIDENTALLY came out blurry (motion/focus mistake), and
+        // must see the original sharpness, before this intentionally blurs the background.
+        if( main_activity.getApplicationInterface().getDepthBlurPref() ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "applying depth blur");
+            if( bitmap == null ) {
+                bitmap = ImageUtils.loadBitmapWithRotation(data, true);
+            }
+            DepthEffect depthEffect = null;
+            try {
+                depthEffect = new DepthEffect(main_activity);
+                bitmap = depthEffect.apply(bitmap);
+            }
+            catch(Exception e) {
+                // best-effort only - model missing/corrupt should never block saving the photo
+                if( MyDebug.LOG )
+                    Log.e(TAG, "depth blur failed: " + e.getMessage());
+            }
+            finally {
+                if( depthEffect != null )
+                    depthEffect.close();
+            }
+            if( MyDebug.LOG )
+                Log.d(TAG, "Save single image performance: time after depth blur: " + (System.currentTimeMillis() - time_s));
+        }
+
         return new PostProcessBitmapResult(bitmap);
     }
 }

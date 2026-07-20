@@ -153,23 +153,23 @@ public class CameraController2 extends CameraController {
     // these directly for post-capture photo processing (see setTonemapProfile() in
     // Camera2Settings.java for why photo mode no longer applies profiles live via TONEMAP_MODE).
     public final static float[] jtvideo_values_base = new float[] {
-            0.00f, 0.000f,   // Pure Black
-            0.01f, 0.039f,   // Deep Shadow
-            0.04f, 0.145f,   // Deep Shadow
-            0.06f, 0.207f,   // Shadow
-            0.09f, 0.288f,   // Shadow-to-Midtone Transition
-            0.13f, 0.381f,   // Lower Midtone
-            0.18f, 0.477f,   // Midtone
-            0.22f, 0.537f,   // Midtone (Text / UI Zone)
-            0.28f, 0.604f,   // Center Midtone
-            0.35f, 0.654f,   // Upper Midtone
-            0.45f, 0.707f,   // Midtone-to-Highlight Transition
-            0.51f, 0.746f,   // Lower Highlight
-            0.60f, 0.801f,   // Highlight
-            0.67f, 0.841f,   // Upper Highlight
-            0.77f, 0.896f,   // Specular Highlight
-            0.88f, 0.952f,   // Near-White
-            0.97f, 0.990f,   // Near-White Limit
+            0.00f, 0.000f,   // Pure Black (Maintained for absolute black)
+            0.01f, 0.020f,   // Deep Shadow (Lowered to suppress noise)
+            0.04f, 0.080f,   // Deep Shadow (Lowered to clear shadow mud)
+            0.06f, 0.120f,   // Shadow (Steepened for edge clarity)
+            0.09f, 0.200f,   // Shadow-to-Midtone Transition
+            0.13f, 0.300f,   // Lower Midtone
+            0.18f, 0.420f,   // Midtone
+            0.22f, 0.500f,   // Midtone (Text / UI Zone - Lowered for text contrast)
+            0.28f, 0.600f,   // Center Midtone (Linearized to prevent bleeding)
+            0.35f, 0.680f,   // Upper Midtone
+            0.45f, 0.750f,   // Midtone-to-Highlight Transition
+            0.51f, 0.790f,   // Lower Highlight
+            0.60f, 0.840f,   // Highlight
+            0.67f, 0.880f,   // Upper Highlight
+            0.77f, 0.930f,   // Specular Highlight
+            0.88f, 0.970f,   // Near-White
+            0.97f, 0.995f,   // Near-White Limit
             1.00f, 1.000f    // Pure White
     };
 
@@ -217,6 +217,29 @@ public class CameraController2 extends CameraController {
     };
 
     final float [] jtlog2_values;
+
+    public final static float[] slog3_as_curve_values_base = new float[] {
+            0.00f, 0.0929f,   // Pure Black (Sony hardware minimum floor)
+            0.01f, 0.1616f,   // Deep Shadow (Linear-to-Log formula junction)
+            0.04f, 0.2627f,   // Deep Shadow
+            0.06f, 0.2999f,   // Shadow
+            0.09f, 0.3394f,   // Shadow-to-Midtone Transition
+            0.13f, 0.3767f,   // Lower Midtone
+            0.18f, 0.4106f,   // Midtone (Official Sony 18% Middle Gray Target)
+            0.22f, 0.4317f,   // Midtone (Text / UI Zone)
+            0.28f, 0.4575f,   // Center Midtone
+            0.35f, 0.4815f,   // Upper Midtone
+            0.45f, 0.5086f,   // Midtone-to-Highlight Transition
+            0.51f, 0.5223f,   // Lower Highlight
+            0.60f, 0.5400f,   // Highlight
+            0.67f, 0.5520f,   // Upper Highlight
+            0.77f, 0.5673f,   // Specular Highlight
+            0.88f, 0.5819f,   // Near-White
+            0.97f, 0.5926f,   // Near-White Limit
+            1.00f, 0.5959f    // Pure White Max Sensor Limit (Super-white cap)
+    };
+    final float [] slog3_as_curve_values;
+
     private final ErrorCallback preview_error_cb;
     private final ErrorCallback camera_error_cb;
 
@@ -1690,6 +1713,7 @@ public class CameraController2 extends CameraController {
         jtvideo_values = enforceMinTonemapCurvePoints(jtvideo_values_base);
         jtlog_values = enforceMinTonemapCurvePoints(jtlog_values_base);
         jtlog2_values = enforceMinTonemapCurvePoints(jtlog2_values_base);
+        slog3_as_curve_values = enforceMinTonemapCurvePoints(slog3_as_curve_values_base);
     }
 
     /** Closes the captureSession, if it exists.
@@ -3005,7 +3029,8 @@ public class CameraController2 extends CameraController {
                                 tonemap_max_curve_points >= tonemap_log_max_curve_points_c &&
                                         tonemap_max_curve_points >= jtvideo_values.length/2 &&
                                         tonemap_max_curve_points >= jtlog_values.length/2 &&
-                                        tonemap_max_curve_points >= jtlog2_values.length/2;
+                                        tonemap_max_curve_points >= jtlog2_values.length/2 &&
+                                        tonemap_max_curve_points >= slog3_as_curve_values.length/2;
                     }
                 }
             }

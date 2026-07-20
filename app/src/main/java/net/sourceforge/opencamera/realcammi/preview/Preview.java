@@ -599,7 +599,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     // change 1
     private ArrayList<CameraController.Area> getAreas(float focus_x, float focus_y) {
 
-        int focus_size = 90; //default 50
+        int focus_size = 60; //default 50
         if( MyDebug.LOG ) {
             Log.d(TAG, "focus x, y: " + focus_x + ", " + focus_y);
         }

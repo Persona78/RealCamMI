@@ -952,6 +952,7 @@
     <string name="preference_video_jtvideo" translatable="false">JTVideo</string>
     <string name="preference_video_jtlog" translatable="false">JTLog</string>
     <string name="preference_video_jtlog2" translatable="false">JTLog2</string>
+    <string name="preference_video_slog3c" translatable="false">Slog3c</string>
     <string name="preference_video_profile_gamma" translatable="false">Video gamma value</string>
     <string name="preference_video_profile_gamma_summary" translatable="false">Gamma value to use for video if video picture profile is set to Gamma\n%s</string>
     <string name="preference_video_profile_gamma_1_6" translatable="false">1.6</string>
@@ -1059,6 +1060,10 @@
 	
 	<string name="preference_auto_hdr" translatable="false">Auto HDR</string>
     <string name="preference_auto_hdr_summary" translatable="false">When enabled in Standard photo mode, if the metered ISO is less than or equal to 1100 the app automatically switches to the device\'s HDR camera extension for that shot (light scene, flash and manual focus become unavailable while it\'s active). Above that ISO, the camera stays in normal mode with flash available (Dark scene). Adds extra capture time on well-lit shots.</string>
+
+	<string name="preference_depth_blur" translatable="false">Depth Effect (Bokeh) </string>
+    <string name="preference_depth_blur_summary" translatable="false">When enabled will apply a neural network-based monocular depth estimation which takes a single photo that has already been captured and generates a depth map, without needing a dedicated depth sensor. (Don\'t use with Color Correction Option).</string>
+
 
 	<string name="preference_ai_scene_detection" translatable="false">Scene Detection</string>
     <string name="preference_ai_scene_detection_summary" translatable="false">When enabled in Standard photo mode, the AI ​​component will evaluate the shot and calibrate the image as necessary.</string>

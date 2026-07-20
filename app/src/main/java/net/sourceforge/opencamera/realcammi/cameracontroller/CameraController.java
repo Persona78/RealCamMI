@@ -607,7 +607,8 @@ public abstract class CameraController {
         TONEMAPPROFILE_GAMMA,
         TONEMAPPROFILE_JTVIDEO,
         TONEMAPPROFILE_JTLOG,
-        TONEMAPPROFILE_JTLOG2
+        TONEMAPPROFILE_JTLOG2,
+        TONEMAPPROFILE_SLOG3C
     }
 
     /** Sets a tonemap profile.
