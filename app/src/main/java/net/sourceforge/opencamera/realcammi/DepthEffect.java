@@ -78,14 +78,14 @@ public class DepthEffect {
     // phone-camera bokeh (small sensor, ~24mm-equivalent focal length) is naturally much
     // subtler than a dedicated portrait lens; a large value here is what makes computational
     // bokeh look fake. Start conservative and only raise it after seeing a real result.
-    private static final float MAX_BLUR_SIGMA = 6.5f;
+    private static final float MAX_BLUR_SIGMA = 6.0f;
 
     // [REALCAMMI FORK TUNE] Controls how quickly blur saturates with distance from the focal
     // plane. Higher = blur ramps up faster and plateaus sooner (more separation, closer to a
     // wide-aperture look); lower = more gradual, deeper apparent depth of field. This is the
     // single most important value to adjust after seeing a real photo - see the saturating
     // curve in apply() below.
-    private static final float FALLOFF_SHARPNESS = 1.5f;
+    private static final float FALLOFF_SHARPNESS = 1.25f;
 
     private final Interpreter interpreter;
 

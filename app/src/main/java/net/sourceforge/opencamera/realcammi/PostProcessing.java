@@ -1095,8 +1095,8 @@ public class PostProcessing {
         // for the full rationale.
         // Tune 1
         ColorMatrix cm = new ColorMatrix(new float[] {
-                0.980f, 0f,    0f,    0f, 0f,   // R: -2%
-                0f,    0.980f, 0f,    0f, 0f,   // G: -2%
+                0.985f, 0f,    0f,    0f, 0f,   // R: -2%
+                0f,    0.985f, 0f,    0f, 0f,   // G: -2%
                 0f,    0f,    1.00f, 0f, 0f,   // B: unchanged
                 0f,    0f,    0f,    1f, 0f    // A
         });
@@ -1110,7 +1110,7 @@ public class PostProcessing {
             remember the other is still stacking on top of it.*/
 
         ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(0.60f);
+        saturationBoost.setSaturation(0.90f);
         cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
