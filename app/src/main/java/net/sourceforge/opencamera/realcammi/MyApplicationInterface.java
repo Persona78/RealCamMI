@@ -692,7 +692,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         if( getColorCorrectionPref() )
             return 100; // capture at full quality, since the image will be re-saved after color correction post-processing
 
-        if( getOpenCVNRPref() || getOpenCVSharpenPref() || getOpenCVCLAHEPref() )
+        if( getOpenCVNRPref() || getOpenCVSharpenPref() || getOpenCVCLAHEPref() || getDepthBlurPref() )
             return 100;
 
         if( getImageFormatPref() != ImageSaver.Request.ImageFormat.STD )

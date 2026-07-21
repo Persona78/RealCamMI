@@ -773,9 +773,11 @@ public class PostProcessing {
             // in highlights (l_norm=1, +12.5% chroma) - see class doc comment above for history.
             //Core.addWeighted(l_norm, 0.125, l_norm, 0, 1.0, boost);
 
-            // UPDATED VALUES: We increased the multiplier from 0.125 to 0.180 (an 18% gain instead of 12.5%).
+            // UPDATED VALUES: We increased the multiplier from 0.125 to 0.130 (an 13% gain instead of 12.5%).
             // We also added a compensation base of 1.02 to bring life to the midtones without blowing out the highlights.
-            Core.addWeighted(l_norm, 0.180, l_norm, 0, 1.02, boost);
+            // alpha: controls how much saturation increases from the shadows to the highlights (the higher the value, the stronger it becomes in the bright areas).
+            // gamma: It's the minimum that remains even in the shadows (the part that never turns off, not even in the darkest point of the photo).
+            Core.addWeighted(l_norm, 0.130, l_norm, 0, 1.02, boost);
 
             Mat a_chan = channels.get(1);
             Mat b_chan = channels.get(2);
@@ -1073,7 +1075,7 @@ public class PostProcessing {
 
     private Bitmap applyColorCorrection(byte[] data, Bitmap bitmap) {
         if( MyDebug.LOG )
-            Log.d(TAG, "applyColorCorrection");
+            Log.d(TAG, "apply Color Correction");
 
         if( bitmap == null ) {
             if( MyDebug.LOG )
@@ -1107,9 +1109,9 @@ public class PostProcessing {
             for the TonemapCurve's desaturation. If either one is retuned in isolation later,
             remember the other is still stacking on top of it.*/
 
-        ColorMatrix saturationBoost = new ColorMatrix();
+        /*ColorMatrix saturationBoost = new ColorMatrix();
         saturationBoost.setSaturation(1.02f);
-        cm.postConcat(saturationBoost);
+        cm.postConcat(saturationBoost);*/
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(corrected);
