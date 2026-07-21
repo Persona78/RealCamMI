@@ -441,7 +441,7 @@ public class Camera2Settings {
             // Tune 3
             ColorSpaceTransform color_space_transform = new ColorSpaceTransform(new int[]
                     {
-                            12, 10,  -1, 10,  -1, 10, //RED
+                            11, 10,  0, 10,  -1, 10, //RED
                             -1, 10,  11, 10,  0, 10, // GREEN
                             -1, 10,  -1, 10,  12, 10  // BLUE
                     });

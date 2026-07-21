@@ -31,6 +31,15 @@ import android.widget.TextView;
 
 import java.io.IOException;
 
+
+// Configuration        Bytes per Pixel      Transparency?       Best Used For
+// ALPHA_8                1 Byte           Only Transparency   Alpha masking, blur masks, text effects
+// RGB_565                2 Bytes                No            Opaque photos, full-screen background assets
+// ARGB_8888              4 Bytes               Yes            Default choice, high-quality images, icons
+// RGBA_F16               8 Bytes               Yes            HDR photos, wide color gamut editing
+// HARDWARE               Varies (GPU)          Yes            Ultra-fast rendering of immutable UI assets
+
+
 /** Methods to apply post processing to resultant images.
  */
 public class PostProcessing {
@@ -777,7 +786,7 @@ public class PostProcessing {
             // We also added a compensation base of 1.02 to bring life to the midtones without blowing out the highlights.
             // alpha: controls how much saturation increases from the shadows to the highlights (the higher the value, the stronger it becomes in the bright areas).
             // gamma: It's the minimum that remains even in the shadows (the part that never turns off, not even in the darkest point of the photo).
-            Core.addWeighted(l_norm, 0.130, l_norm, 0, 1.02, boost);
+            Core.addWeighted(l_norm, 0.100, l_norm, 0, 1.02, boost);
 
             Mat a_chan = channels.get(1);
             Mat b_chan = channels.get(2);
@@ -987,6 +996,9 @@ public class PostProcessing {
             case TONEMAPPROFILE_JTLOG2:
                 values = CameraController2.jtlog2_values_base;
                 break;
+            case TONEMAPPROFILE_SLOG3C:
+                values = CameraController2.slog3_as_curve_values_base;
+                break;
         }
         return values;
     }
@@ -1005,19 +1017,13 @@ public class PostProcessing {
         if( bitmap == null || curve_points == null || curve_points.length < 4 )
             return bitmap;
 
-        Mat src = null, rgb = null, dst = null, result_rgba = null, lut = null;
+        // Use a List to manage split color channels cleanly
+        java.util.List<Mat> channels = new java.util.ArrayList<>();
+        Mat src = null, lut = null, dst = null;
         try {
             int n_points = curve_points.length / 2;
             byte [] lut_bytes = new byte[256];
             for(int v = 0; v < 256; v++) {
-                // [REALCAMMI FORK BUGFIX] The curve_points (Rec709/sRGB/Log/Gamma/S-Log3/JT) are
-                // OETFs: they expect LINEAR scene-referred input in [0,1], exactly what the
-                // sensor delivers live via TONEMAP_MODE. Here the input is instead an already
-                // gamma-encoded (Standard-processed, sRGB-ish) JPEG bitmap - feeding it straight
-                // into the curve applied a second gamma encoding on top of the first, blowing
-                // shadows/midtones out to near-white. Decoding back to approximate linear light
-                // first (standard sRGB EOTF) before interpolating the curve fixes this, at no
-                // extra runtime cost since it's folded into the same one-time 256-entry LUT.
                 float c = v / 255.0f;
                 float x = (c <= 0.04045f) ? (c / 12.92f) : (float)Math.pow((c + 0.055) / 1.055, 2.4);
 
@@ -1029,7 +1035,7 @@ public class PostProcessing {
                     out = curve_points[2*(n_points-1)+1];
                 }
                 else {
-                    out = curve_points[1]; // fallback, overwritten by the loop below
+                    out = curve_points[1];
                     for(int i = 0; i < n_points - 1; i++) {
                         float x0 = curve_points[2*i], x1 = curve_points[2*(i+1)];
                         if( x >= x0 && x <= x1 ) {
@@ -1047,16 +1053,29 @@ public class PostProcessing {
             lut.put(0, 0, lut_bytes);
 
             src = new Mat();
-            Utils.bitmapToMat(bitmap, src);
-            rgb = new Mat();
-            Imgproc.cvtColor(src, rgb, Imgproc.COLOR_RGBA2RGB);
+            Utils.bitmapToMat(bitmap, src); // Pulls exact pixels from bitmap (typically RGBA)
+
+            // FIX 1 & 2: Split channels to protect the Alpha layer from the LUT transformation
+            Core.split(src, channels);
+
+            if (channels.size() >= 3) {
+                // Apply the LUT curve strictly to Red, Green, and Blue channels
+                Core.LUT(channels.get(0), lut, channels.get(0)); // R
+                Core.LUT(channels.get(1), lut, channels.get(1)); // G
+                Core.LUT(channels.get(2), lut, channels.get(2)); // B
+                // channels.get(3) (Alpha) is left completely untouched!
+            }
+
             dst = new Mat();
-            Core.LUT(rgb, lut, dst); // single-channel lut broadcasts across all 3 channels
-            result_rgba = new Mat();
-            Imgproc.cvtColor(dst, result_rgba, Imgproc.COLOR_RGB2RGBA);
+            Core.merge(channels, dst); // Recombine channels safely
 
             Bitmap out_bitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
-            Utils.matToBitmap(result_rgba, out_bitmap);
+            Utils.matToBitmap(dst, out_bitmap);
+
+            // FIX 3: Safely recycle the old bitmap memory to avoid OutOfMemoryError crashes
+            if (bitmap != out_bitmap) {
+                bitmap.recycle();
+            }
             return out_bitmap;
         }
         catch(Exception e) {
@@ -1066,10 +1085,11 @@ public class PostProcessing {
         }
         finally {
             if( src != null ) src.release();
-            if( rgb != null ) rgb.release();
             if( dst != null ) dst.release();
-            if( result_rgba != null ) result_rgba.release();
             if( lut != null ) lut.release();
+            for (Mat m : channels) {
+                if (m != null) m.release();
+            }
         }
     }
 
@@ -1095,8 +1115,8 @@ public class PostProcessing {
         // for the full rationale.
         // Tune 1
         ColorMatrix cm = new ColorMatrix(new float[] {
-                0.985f, 0f,    0f,    0f, 0f,   // R: -2%
-                0f,    0.985f, 0f,    0f, 0f,   // G: -2%
+                0.985f, 0f,    0f,    0f, 0f,   // R: -1.5%
+                0f,    0.985f, 0f,    0f, 0f,   // G: -1.5%
                 0f,    0f,    1.00f, 0f, 0f,   // B: unchanged
                 0f,    0f,    0f,    1f, 0f    // A
         });
@@ -1110,7 +1130,7 @@ public class PostProcessing {
             remember the other is still stacking on top of it.*/
 
         ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(0.90f);
+        saturationBoost.setSaturation(0.85f);
         cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
