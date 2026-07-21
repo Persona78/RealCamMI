@@ -25,6 +25,7 @@ import android.graphics.Point;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import androidx.preference.DialogPreference;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
@@ -71,7 +72,8 @@ import java.util.List;
  *  to read camera settings won't be possible as the camera won't yet be
  *  reopened.
  */
-public class MyPreferenceFragment extends PreferenceFragmentCompat implements OnSharedPreferenceChangeListener {
+public class MyPreferenceFragment extends PreferenceFragmentCompat
+        implements OnSharedPreferenceChangeListener, DialogPreference.TargetFragment {
     private static final String TAG = "MyPreferenceFragment";
 
     private boolean edge_to_edge_mode = false;
@@ -1008,14 +1010,24 @@ public class MyPreferenceFragment extends PreferenceFragmentCompat implements On
      */
     @Override
     public void onDisplayPreferenceDialog(androidx.preference.Preference preference) {
+        // [REALCAMMI FORK BUGFIX 2026-07-21] Same crash as PreferenceSubScreen.java (see that
+        // file's comment for the full explanation): PreferenceDialogFragmentCompat.onCreate()
+        // requires a callback implementing DialogPreference.TargetFragment, resolved via
+        // getParentFragment(), then getTargetFragment(), then the hosting Context - this class
+        // satisfied none of the three, so any ArraySeekBarPreference/MyEditTextPreference dialog
+        // shown from the TOP-LEVEL settings screen (as opposed to a sub-screen) would crash with
+        // "Target fragment must implement TargetFragment interface" the same way. Not yet
+        // reported because testing so far happened to go through a sub-screen first.
         if( preference instanceof net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference ) {
             net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog dialog =
                 net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog.newInstance(preference.getKey());
+            dialog.setTargetFragment(this, 0);
             dialog.show(getParentFragmentManager(), "ArraySeekBarPreferenceDialog");
         }
         else if( preference instanceof net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference ) {
             net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog dialog =
                 net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog.newInstance(preference.getKey());
+            dialog.setTargetFragment(this, 0);
             dialog.show(getParentFragmentManager(), "MyEditTextPreferenceDialog");
         }
         else {

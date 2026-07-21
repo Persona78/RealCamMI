@@ -3,6 +3,7 @@ package net.sourceforge.opencamera.realcammi;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import androidx.preference.DialogPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
@@ -13,7 +14,8 @@ import java.util.HashSet;
 
 /** Must be used as the parent class for all sub-screens.
  */
-public class PreferenceSubScreen extends PreferenceFragmentCompat implements SharedPreferences.OnSharedPreferenceChangeListener {
+public class PreferenceSubScreen extends PreferenceFragmentCompat
+        implements SharedPreferences.OnSharedPreferenceChangeListener, DialogPreference.TargetFragment {
     private static final String TAG = "PreferenceSubScreen";
 
     private boolean edge_to_edge_mode = false;
@@ -31,26 +33,30 @@ public class PreferenceSubScreen extends PreferenceFragmentCompat implements Sha
      */
     @Override
     public void onDisplayPreferenceDialog (androidx.preference.Preference preference) {
-        // [REALCAMMI FORK BUGFIX] Removed the two dialog.setTargetFragment(this, 0) calls that
-        // used to be here. setTargetFragment() is deprecated (API 31+) and this project's own
-        // history already removed it "throughout" everywhere else - this file was missed. It's
-        // also unnecessary: ArraySeekBarPreferenceDialog/MyEditTextPreferenceDialog both resolve
-        // their Preference via getPreference() (by key, through ARG_KEY), not via the target
-        // fragment - MyPreferenceFragment.java's version of this same method never had this call
-        // and works correctly. Every screen that extends this class (Photo, GUI, Licences,
-        // Location, Preview, Processing, Remote Control, Settings Manager, Video) was affected -
-        // any ArraySeekBarPreference/MyEditTextPreference dialog on any of those screens could
-        // crash the app when opened, not just the Photo screen's gamma value picker.
+        // [REALCAMMI FORK BUGFIX 2026-07-21] A previous "fix" removed the two
+        // dialog.setTargetFragment(this, 0) calls that used to be here, reasoning that
+        // setTargetFragment() is deprecated (API 31+) and unnecessary since the dialogs resolve
+        // their Preference via ARG_KEY, not via the target fragment. That's true for RESOLVING
+        // the preference - but PreferenceDialogFragmentCompat.onCreate() separately requires a
+        // callback implementing DialogPreference.TargetFragment (checked via getParentFragment(),
+        // then getTargetFragment(), then the hosting Context, in that order) - with none of the
+        // three satisfied, it throws "Target fragment must implement TargetFragment interface"
+        // on every open, confirmed via logcat. Restored the calls (now paired with this class
+        // implementing DialogPreference.TargetFragment above, so the interface check passes even
+        // if a future androidx version stops honouring plain setTargetFragment). Every screen
+        // that extends this class (Photo, GUI, Licences, Location, Preview, Processing, Remote
+        // Control, Settings Manager, Video) was affected - any ArraySeekBarPreference/
+        // MyEditTextPreference dialog on any of those screens crashed the app when opened.
         if (preference instanceof net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference) {
             net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog dialog =
                     net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference.ArraySeekBarPreferenceDialog.newInstance(preference.getKey());
-
+            dialog.setTargetFragment(this, 0);
             dialog.show(getParentFragmentManager(), "ArraySeekBarPreferenceDialog");
         }
         else if (preference instanceof net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference) {
             net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog dialog =
                     net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference.MyEditTextPreferenceDialog.newInstance(preference.getKey());
-
+            dialog.setTargetFragment(this, 0);
             dialog.show(getParentFragmentManager(), "MyEditTextPreferenceDialog");
         }
         else {

@@ -1109,9 +1109,9 @@ public class PostProcessing {
             for the TonemapCurve's desaturation. If either one is retuned in isolation later,
             remember the other is still stacking on top of it.*/
 
-        /*ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(1.02f);
-        cm.postConcat(saturationBoost);*/
+        ColorMatrix saturationBoost = new ColorMatrix();
+        saturationBoost.setSaturation(0.60f);
+        cm.postConcat(saturationBoost);
 
         Bitmap corrected = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(corrected);
