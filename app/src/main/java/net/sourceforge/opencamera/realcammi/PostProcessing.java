@@ -621,7 +621,7 @@ public class PostProcessing {
             int nr_d, nr_sigma;
             switch( NR_STRENGTH ) {
                 case NR_STRENGTH_LIGHT:
-                    nr_d = 6; nr_sigma = 14;
+                    nr_d = 8; nr_sigma = 14;
                     break;
                 case NR_STRENGTH_STRONG:
                     nr_d = 13; nr_sigma = 110;

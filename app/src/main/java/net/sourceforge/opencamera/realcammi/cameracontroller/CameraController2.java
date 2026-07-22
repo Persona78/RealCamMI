@@ -587,10 +587,10 @@ public class CameraController2 extends CameraController {
     }
 
     private static float RGBtoGain(float value) {
-        final float max_gain_c = 9.0f; // RealCamMI 10.0f default value, set 9.0f to try to get Less Digital Noise (Grain):
+        final float max_gain_c = 8.5f; // RealCamMI 10.0f default value, set 8.5f to try to get Less Digital Noise (Grain):
         // In extremely dark areas of the image (where maximum gain is activated), the camera will amplify the
         // signal slightly less. This helps reduce visual noise (those colored dots or "grain" that appear in dark areas).
-        // Slightly Darker Shadows: Since the gain has been limited to 9.0f instead of 10.0f, absolute blacks or very
+        // Slightly Darker Shadows: Since the gain has been limited to 8.5f instead of 10.0f, absolute blacks or very
         // deep shadows will not be lightened as much. The image may take on a slightly higher-contrast look in these dark zones.
         if( value < 1.0e-5f ) {
             return max_gain_c;

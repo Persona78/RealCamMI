@@ -54,7 +54,7 @@ public class SceneDetector {
     }
 
     // Luminance histogram thresholds (Y plane is 0..255)
-    private static final int DARK_BIN_THRESHOLD = 40;    // sample counts as "dark" below this
+    private static final int DARK_BIN_THRESHOLD = 60;    // sample counts as "dark" below this
     private static final int BRIGHT_BIN_THRESHOLD = 220; // sample counts as "near-clipped" above this
     private static final float BACKLIT_DARK_FRACTION = 0.25f;   // >=25% of sampled pixels dark
     private static final float BACKLIT_BRIGHT_FRACTION = 0.15f; // >=15% of sampled pixels near-clipped

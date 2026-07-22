@@ -57,7 +57,7 @@ public class Camera2Settings {
     // Neutral light (3500K – 4500K)
     // Cool light (5000K – 6500K)
     // RealCamMI Default set to 5000
-    int white_balance_temperature = 6500; // used for white_balance == CONTROL_AWB_MODE_OFF
+    int white_balance_temperature = 6000; // used for white_balance == CONTROL_AWB_MODE_OFF
     String flash_value = "flash_off";
     boolean has_iso;
     //private int ae_mode = CameraMetadata.CONTROL_AE_MODE_ON;
