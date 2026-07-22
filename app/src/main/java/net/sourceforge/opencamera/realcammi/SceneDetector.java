@@ -74,24 +74,18 @@ public class SceneDetector {
 
     private final ImageLabeler labeler;
     private final Listener listener;
-    // [REALCAMMI FORK] volatile: written from the classifyFrame()/reportCandidate() call chain
-    // (runs on the "CameraBackground" handler thread), read via getCurrentCategory() from a
-    // different thread (the ImageSaver thread, through CameraController2's own volatile
-    // sceneDetector reference). Without this, the write isn't guaranteed visible to that read.
+
+    // [REALCAMMI FORK] Thread-safe synchronization layers for background pipelines
     private volatile SceneCategory current_category = SceneCategory.STANDARD;
     private SceneCategory pending_category = SceneCategory.STANDARD;
     private int pending_count = 0;
-    private volatile boolean mlkit_busy = false; // avoid queueing MLKit calls faster than it can process them
-    // - volatile: written from both the CameraBackground thread and the MLKit callback thread
+    private volatile boolean mlkit_busy = false;
 
     public SceneDetector(Listener listener) {
         this.listener = listener;
         this.labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS);
     }
 
-    /** Release the MLKit labeler. Call when the analysis reader is closed (camera closing, or
-     *  AI scene detection preference turned off).
-     */
     public void close() {
         labeler.close();
     }
@@ -100,12 +94,9 @@ public class SceneDetector {
         return current_category;
     }
 
-    /** Call from the analysis ImageReader's throttled OnImageAvailableListener.
-     *  Does close [image] - the caller remains responsible for that, same contract as
-     *  before this method existed (see CameraController2.createAnalysisImageReader()).
-     *  [has_metering] should reflect whether [iso]/[exposure_time_ns] are actually valid
-     *  (mirrors CameraController2's own capture_result_has_iso/capture_result_has_exposure_time
-     *  flags) - if false, the low-light check is skipped rather than acting on stale/zero values.
+    /**
+     * Orchestrates synchronous baseline math checks and schedules asynchronous MLKit
+     * inference sessions without blocking the native hardware camera preview pipeline.
      */
     public void classifyFrame(Image image, int rotation_degrees, int iso, long exposure_time_ns, boolean has_metering) {
         SceneCategory histogram_result = classifyByLuminanceHistogram(image);
@@ -126,24 +117,38 @@ public class SceneDetector {
             return;
         }
         mlkit_busy = true;
-        InputImage input = InputImage.fromMediaImage(image, rotation_degrees);
-        labeler.process(input)
-                .addOnSuccessListener(labels ->
-                        reportCandidate(isIndoorLabelSet(labels) ? SceneCategory.INDOOR : SceneCategory.STANDARD))
-                .addOnFailureListener(e -> {
-                    if( MyDebug.LOG )
-                        Log.e(TAG, "MLKit image labeling failed: " + e.getMessage());
-                })
-                .addOnCompleteListener(task -> {
-                    // [REALCAMMI FORK BUGFIX] image must stay valid until MLKit fully finishes with
-                    // it - close here (matches Google's own MLKit sample), not right after process().
-                    mlkit_busy = false;
-                    image.close();
-                });
+
+        try {
+            InputImage input = InputImage.fromMediaImage(image, rotation_degrees);
+            labeler.process(input)
+                    .addOnSuccessListener(labels ->
+                            reportCandidate(isIndoorLabelSet(labels) ? SceneCategory.INDOOR : SceneCategory.STANDARD))
+                    .addOnFailureListener(e -> {
+                        if( MyDebug.LOG )
+                            Log.e(TAG, "MLKit image labeling failed: " + e.getMessage());
+                    })
+                    .addOnCompleteListener(task -> {
+                        // [REALCAMMI FORK] Safely releases frame resources inside the callback thread
+                        mlkit_busy = false;
+                        image.close();
+                    });
+        } catch (Exception e) {
+            if( MyDebug.LOG ) Log.e(TAG, "Failed to instantiate InputImage from media layer", e);
+            mlkit_busy = false;
+            image.close();
+        }
     }
 
+    /**
+     * Executes a cheap synchronous luminance-histogram calculation on the frame's Y plane.
+     * Evaluates boundary population profiles to identify extreme backlit anomalies.
+     */
     private SceneCategory classifyByLuminanceHistogram(Image image) {
-        Image.Plane y_plane = image.getPlanes()[0]; // Y is always plane 0 in YUV_420_888
+        if (image == null || image.getPlanes() == null || image.getPlanes().length == 0) {
+            return SceneCategory.STANDARD;
+        }
+
+        Image.Plane y_plane = image.getPlanes()[0]; // Y channel is always plane 0 in YUV_420_888
         ByteBuffer buffer = y_plane.getBuffer();
         int row_stride = y_plane.getRowStride();
         int pixel_stride = y_plane.getPixelStride();
@@ -153,6 +158,8 @@ public class SceneDetector {
         int dark_count = 0;
         int bright_count = 0;
         int total = 0;
+
+        // Microscopic scan: sample pixels based on step intervals to save memory bandwidth
         for( int y = 0; y < height; y += HISTOGRAM_SAMPLE_STEP ) {
             int row_start = y * row_stride;
             for( int x = 0; x < width; x += HISTOGRAM_SAMPLE_STEP ) {
@@ -164,44 +171,66 @@ public class SceneDetector {
                 total++;
             }
         }
-        if( total == 0 )
-            return SceneCategory.STANDARD;
 
-        float dark_fraction = dark_count / (float) total;
-        float bright_fraction = bright_count / (float) total;
-        boolean is_backlit = dark_fraction >= BACKLIT_DARK_FRACTION && bright_fraction >= BACKLIT_BRIGHT_FRACTION;
-        if( MyDebug.LOG )
-            Log.d(TAG, "classifyByLuminanceHistogram: dark_fraction=" + dark_fraction + " bright_fraction=" + bright_fraction + " backlit=" + is_backlit);
-        return is_backlit ? SceneCategory.EXTREME_BACKLIT : SceneCategory.STANDARD;
+        if (total == 0) return SceneCategory.STANDARD;
+
+        float dark_fraction = (float) dark_count / total;
+        float bright_fraction = (float) bright_count / total;
+
+        // Extreme backlit scenario: large shadowed region juxtaposed against near-clipped highlights
+        if (dark_fraction >= BACKLIT_DARK_FRACTION && bright_fraction >= BACKLIT_BRIGHT_FRACTION) {
+            return SceneCategory.EXTREME_BACKLIT;
+        }
+
+        return SceneCategory.STANDARD;
     }
 
+    /**
+     * Iterates over MLKit labels and performs a professional-tier keyword verification
+     * against the indoor lookup dictionary to isolate room/furniture metadata.
+     */
     private boolean isIndoorLabelSet(List<ImageLabel> labels) {
-        for( ImageLabel label : labels ) {
-            if( label.getConfidence() < INDOOR_LABEL_MIN_CONFIDENCE )
-                continue;
-            String text = label.getText().toLowerCase(Locale.US);
-            for( String indoor_label : INDOOR_LABELS ) {
-                if( text.contains(indoor_label) )
-                    return true;
+        if (labels == null || labels.isEmpty()) {
+            return false;
+        }
+
+        for (ImageLabel label : labels) {
+            if (label.getConfidence() >= INDOOR_LABEL_MIN_CONFIDENCE) {
+                String labelText = label.getText().toLowerCase(Locale.ROOT).trim();
+                for (String indoorLabel : INDOOR_LABELS) {
+                    if (labelText.equals(indoorLabel)) {
+                        if (MyDebug.LOG) {
+                            Log.d(TAG, "Matched Indoor Content: " + labelText + " (Conf: " + label.getConfidence() + ")");
+                        }
+                        return true;
+                    }
+                }
             }
         }
         return false;
     }
 
-    private synchronized void reportCandidate(SceneCategory category) {
-        if( category == pending_category ) {
+    /**
+     * Evaluates incoming frame candidates against a strict hysteresis counter threshold.
+     * Smooths out transition fluctuations to avoid rapid state bouncing in active capture requests.
+     */
+    private void reportCandidate(SceneCategory candidate) {
+        if (candidate == pending_category) {
             pending_count++;
-        }
-        else {
-            pending_category = category;
+            if (pending_count >= HYSTERESIS_COUNT) {
+                if (current_category != pending_category) {
+                    current_category = pending_category;
+                    if (listener != null) {
+                        listener.onSceneCategoryChanged(current_category);
+                    }
+                    if (MyDebug.LOG) {
+                        Log.i(TAG, "Scene stabilized. Transmitted new profile to HAL3: " + current_category.name());
+                    }
+                }
+            }
+        } else {
+            pending_category = candidate;
             pending_count = 1;
-        }
-        if( pending_count >= HYSTERESIS_COUNT && current_category != pending_category ) {
-            current_category = pending_category;
-            if( MyDebug.LOG )
-                Log.d(TAG, "scene category changed to: " + current_category);
-            if( listener != null )
-                listener.onSceneCategoryChanged(current_category);
         }
     }
 }

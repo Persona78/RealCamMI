@@ -63,6 +63,7 @@ import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.SensorEvent;
 import android.hardware.SensorManager;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraExtensionCharacteristics;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
@@ -595,40 +596,91 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
 
     /** Return a focus area from supplied point. Supplied coordinates should be in camera
      *  coordinates.
+     * Dynamically calculates the focus area based on user touch.
+     * Optimized for the Open Camera ecosystem (scale -1000 to 1000).
+     *
+     * @param focus_x X-coordinate of the touch (mapped to the camera matrix)
+     * @param focus_y Y-coordinate of the touch (mapped to the camera matrix)
+     * @return List containing the configured focus area, or null in case of error
      */
     // change 1
     private ArrayList<CameraController.Area> getAreas(float focus_x, float focus_y) {
+        // 1. DEFINITION OF THE VIRTUAL BASE SIZE
+        int focus_size = 80; // Balanced default value (4% of the 2,000-unit matrix)
 
-        int focus_size = 60; //default 50
-        if( MyDebug.LOG ) {
-            Log.d(TAG, "focus x, y: " + focus_x + ", " + focus_y);
+        try {
+            // Attempts to access Camera2 API features via the RealCamMI controller (Open Camera)
+            if (this.camera_controller instanceof CameraController2) {
+                CameraController2 cController2 = (CameraController2) this.camera_controller;
+                CameraCharacteristics characteristics = cController2.getCameraCharacteristics();
+
+                if (characteristics != null) {
+                    // Reads the actual size of the image sensor's active pixel array
+                    Rect activeArraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+
+                    if (activeArraySize != null) {
+                        int sensorWidth = activeArraySize.width();
+                        int sensorHeight = activeArraySize.height();
+                        long totalPixels = (long) sensorWidth * sensorHeight;
+
+                        // 2. DYNAMIC ADJUSTMENT BASED ON MEGAPIXELS (Pro Level)
+                        // If the sensor exceeds 16 megapixels, we reduce the square
+                        // to maintain surgical focus precision on the subject.
+                        if (totalPixels > 48000000L) {
+                            // Ultra-High Res Sensors (48MP, 64MP, and higer) -> Ultra-fine focus
+                            focus_size = 50;
+                        } else if (totalPixels > 16000000L) {
+                            // Medium-High Resolution Sensors (16MP, 20MP) -> Mid-range focus
+                            focus_size = 65;
+                        } else if (totalPixels > 12000000L) {
+                            // Low-Medium Resolution Sensors (12MP) -> low-range focus
+                            focus_size = 70;
+                        }
+
+
+                        if (MyDebug.LOG) {
+                            Log.d(TAG, "Sensor Detetado: " + (totalPixels / 1000000) + "MP (" + sensorWidth + "x" + sensorHeight + ") -> Ajustado focus_size para: " + focus_size);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Safeguard: If it fails or the device uses the Camera1 API, safely fall back to the default.
+            if (MyDebug.LOG) {
+                Log.e(TAG, "Não foi possível ler as propriedades do sensor. Usando tamanho padrão.", e);
+            }
+            focus_size = 80;
         }
+
+        if (MyDebug.LOG) {
+            Log.d(TAG, "Pro Focus - Input x,y: " + focus_x + ", " + focus_y + " | Final Size: " + focus_size);
+        }
+
+        // 3. CONSTRUCTION AND CROPPING OF THE RECTANGLE (Keeps the touch perfectly centered)
         Rect rect = new Rect();
         rect.left = (int)focus_x - focus_size;
         rect.right = (int)focus_x + focus_size;
         rect.top = (int)focus_y - focus_size;
         rect.bottom = (int)focus_y + focus_size;
-        if( rect.left < -1000 ) {
-            rect.left = -1000;
-            rect.right = rect.left + 2*focus_size;
-        }
-        else if( rect.right > 1000 ) {
-            rect.right = 1000;
-            rect.left = rect.right - 2*focus_size;
-        }
-        if( rect.top < -1000 ) {
-            rect.top = -1000;
-            rect.bottom = rect.top + 2*focus_size;
-        }
-        else if( rect.bottom > 1000 ) {
-            rect.bottom = 1000;
-            rect.top = rect.bottom - 2*focus_size;
+
+        // Algoritmo de Clipping de Bordas
+        if (rect.left < -1000) rect.left = -1000;
+        if (rect.right > 1000) rect.right = 1000;
+        if (rect.top < -1000) rect.top = -1000;
+        if (rect.bottom > 1000) rect.bottom = 1000;
+
+        // Escudo definitivo Anti-Crash
+        if (rect.left >= rect.right || rect.top >= rect.bottom) {
+            if (MyDebug.LOG) Log.e(TAG, "Invalid focus rectangle generated, aborting custom area.");
+            return null;
         }
 
         ArrayList<CameraController.Area> areas = new ArrayList<>();
         areas.add(new CameraController.Area(rect, 1000));
+
         return areas;
     }
+
 
     @SuppressWarnings("SameReturnValue")
     public boolean touchEvent(MotionEvent event) {

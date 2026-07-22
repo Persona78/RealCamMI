@@ -915,6 +915,8 @@ public class MyApplicationInterface extends BasicApplicationInterface {
                 return CameraController.TonemapProfile.TONEMAPPROFILE_JTLOG;
             case "jtlog2":
                 return CameraController.TonemapProfile.TONEMAPPROFILE_JTLOG2;
+            case "slog3c":
+                return CameraController.TonemapProfile.TONEMAPPROFILE_SLOG3C;
         }
         return CameraController.TonemapProfile.TONEMAPPROFILE_OFF;
     }
@@ -929,6 +931,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             case "srgb":
             case "gamma":
             case "slog3":
+            case "slog3c":
             case "jtvideo":
             case "jtlog":
             case "jtlog2":

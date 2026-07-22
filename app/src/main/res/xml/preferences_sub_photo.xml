@@ -141,7 +141,7 @@
         android:summary="@string/preference_video_log_summary"
         android:entries="@array/preference_video_log_entries"
         android:entryValues="@array/preference_video_log_values"
-        android:defaultValue="jtvideo"
+        android:defaultValue="rec709"
         />
 
     <!--  if we move this to another PreferenceGroup, we should update code for the findPreference() call -->

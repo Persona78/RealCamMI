@@ -3,7 +3,9 @@ package net.sourceforge.opencamera.realcammi.cameracontroller;
 import net.sourceforge.opencamera.realcammi.HDRProcessor;
 import net.sourceforge.opencamera.realcammi.MyDebug;
 import net.sourceforge.opencamera.realcammi.SceneDetector;
+import net.sourceforge.opencamera.realcammi.preview.ApplicationInterface;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,6 +21,8 @@ import java.util.concurrent.Executor;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Point;
 import android.graphics.Rect;
@@ -40,6 +44,7 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.Capability;
 import android.hardware.camera2.params.DynamicRangeProfiles;
 import android.hardware.camera2.params.ExtensionSessionConfiguration;
+import android.hardware.camera2.params.Face;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.RggbChannelVector;
@@ -62,6 +67,7 @@ import androidx.annotation.RequiresApi;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Range;
+import android.util.Size;
 import android.util.SizeF;
 import android.view.Display;
 import android.view.Surface;
@@ -242,6 +248,11 @@ public class CameraController2 extends CameraController {
 
     private final ErrorCallback preview_error_cb;
     private final ErrorCallback camera_error_cb;
+    private CameraCharacteristics cameraCharacteristics;
+
+    public CameraCharacteristics getCameraCharacteristics() {
+        return cameraCharacteristics;
+    }
 
     private enum SessionType {
         SESSIONTYPE_NORMAL, // standard use of Camera2 API, via CameraCaptureSession
@@ -758,8 +769,8 @@ public class CameraController2 extends CameraController {
             // so we crop the JPEG ourselves after capture.
             if ((is_ulefone || is_xiaomi) && camera_settings.current_zoom_ratio > 1.0f) {
                 try {
-                    android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
-                    android.graphics.Bitmap originalBitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+                    BitmapFactory.Options options = new BitmapFactory.Options();
+                    Bitmap originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
 
                     if (originalBitmap != null) {
                         int w = originalBitmap.getWidth();
@@ -775,22 +786,22 @@ public class CameraController2 extends CameraController {
                         int x = (int) ((w - cropWidth) / 0.5);
                         int y = (int) ((h - cropHeight) / 0.5);
 
-                        android.graphics.Bitmap croppedBitmap = android.graphics.Bitmap.createBitmap(originalBitmap, x, y, cropWidth, cropHeight);
+                        Bitmap croppedBitmap = Bitmap.createBitmap(originalBitmap, x, y, cropWidth, cropHeight);
 
-                        java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream();
+                        ByteArrayOutputStream stream = new ByteArrayOutputStream();
                         // [REALCAMMI FORK] use the user-configured JPEG quality instead of hardcoded 90
                         // (also ensures quality=100 is used when color correction is active, per getImageQualityPref())
                         // CameraController2 holds a Context reference that is the MainActivity (which implements
                         // ApplicationInterface), so we can safely cast to get the configured quality.
                         int jpeg_quality = 100;
                         try {
-                            net.sourceforge.opencamera.realcammi.preview.ApplicationInterface appInterface =
-                                (net.sourceforge.opencamera.realcammi.preview.ApplicationInterface) CameraController2.this.context;
+                            ApplicationInterface appInterface =
+                                (ApplicationInterface) CameraController2.this.context;
                             jpeg_quality = appInterface.getImageQualityPref();
                         } catch(ClassCastException e) {
                             // context is not an ApplicationInterface, use default quality
                         }
-                        croppedBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, jpeg_quality, stream);
+                        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, jpeg_quality, stream);
                         bytes = stream.toByteArray();
 
                         originalBitmap.recycle();
@@ -2458,7 +2469,7 @@ public class CameraController2 extends CameraController {
                     if( !found ) {
                         if( MyDebug.LOG )
                             Log.d(TAG, "high resolution [non-burst] picture size: " + camera_size.getWidth() + " x " + camera_size.getHeight());
-                        CameraController.Size size = new CameraController.Size(camera_size.getWidth(), camera_size.getHeight());
+                        Size size = new Size(camera_size.getWidth(), camera_size.getHeight());
                         size.supports_burst = false;
                         camera_features.picture_sizes.add(size);
                     }
@@ -2483,12 +2494,12 @@ public class CameraController2 extends CameraController {
             for(android.util.Size camera_size : camera_picture_sizes) {
                 if( MyDebug.LOG )
                     Log.d(TAG, "picture size: " + camera_size.getWidth() + " x " + camera_size.getHeight());
-                camera_features.picture_sizes.add(new CameraController.Size(camera_size.getWidth(), camera_size.getHeight()));
+                camera_features.picture_sizes.add(new Size(camera_size.getWidth(), camera_size.getHeight()));
             }
         }
         // sizes are usually already sorted from high to low, but sort just in case
         // note some devices do have sizes in a not fully sorted order (e.g., Nokia 8)
-        Collections.sort(camera_features.picture_sizes, new CameraController.SizeSorter());
+        Collections.sort(camera_features.picture_sizes, new SizeSorter());
         // test high resolution modes not supporting burst:
         //camera_features.picture_sizes.get(0).supports_burst = false;
 
@@ -2532,7 +2543,7 @@ public class CameraController2 extends CameraController {
         for (Range<Integer> r : characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)) {
             ae_fps_ranges.add(new int[] {r.getLower(), r.getUpper()});
         }
-        Collections.sort(ae_fps_ranges, new CameraController.RangeSorter());
+        Collections.sort(ae_fps_ranges, new RangeSorter());
         if( MyDebug.LOG ) {
             Log.d(TAG, "Supported AE video fps ranges: ");
             for (int[] f : ae_fps_ranges) {
@@ -2559,14 +2570,14 @@ public class CameraController2 extends CameraController {
                 int  max_fps = (int)((1.0 / mfd) * 1000000000L);
                 ArrayList<int[]> fr = new ArrayList<>();
                 fr.add(new int[] {min_fps, max_fps});
-                CameraController.Size normal_video_size = new CameraController.Size(camera_size.getWidth(), camera_size.getHeight(), fr, false);
+                Size normal_video_size = new Size(camera_size.getWidth(), camera_size.getHeight(), fr, false);
                 camera_features.video_sizes.add(normal_video_size);
                 if( MyDebug.LOG ) {
                     Log.d(TAG, "normal video size: " + normal_video_size);
                 }
             }
         }
-        Collections.sort(camera_features.video_sizes, new CameraController.SizeSorter());
+        Collections.sort(camera_features.video_sizes, new SizeSorter());
 
         // don't support high speed if physical camera specified - seems unreliable on Pixel 6 Pro and Galaxy S24+
         if( capabilities_high_speed_video && cameraIdSPhysical == null ) {
@@ -2586,7 +2597,7 @@ public class CameraController2 extends CameraController {
                 }
                 hs_fps_ranges.add(new int[] {r.getLower(), r.getUpper()});
             }
-            Collections.sort(hs_fps_ranges, new CameraController.RangeSorter());
+            Collections.sort(hs_fps_ranges, new RangeSorter());
             if( MyDebug.LOG ) {
                 Log.d(TAG, "Supported high speed video fps ranges: ");
                 for (int[] f : hs_fps_ranges) {
@@ -2624,20 +2635,20 @@ public class CameraController2 extends CameraController {
                 }
                 if (camera_size.getWidth() > 4096 || camera_size.getHeight() > 2160)
                     continue; // just in case? see above
-                CameraController.Size hs_video_size = new CameraController.Size(camera_size.getWidth(), camera_size.getHeight(), fr, true);
+                Size hs_video_size = new Size(camera_size.getWidth(), camera_size.getHeight(), fr, true);
                 if (MyDebug.LOG) {
                     Log.d(TAG, "high speed video size: " + hs_video_size);
                 }
                 camera_features.video_sizes_high_speed.add(hs_video_size);
             }
-            Collections.sort(camera_features.video_sizes_high_speed, new CameraController.SizeSorter());
+            Collections.sort(camera_features.video_sizes_high_speed, new SizeSorter());
         }
 
         android.util.Size [] camera_preview_sizes = configs.getOutputSizes(SurfaceTexture.class);
         camera_features.preview_sizes = new ArrayList<>();
         Point display_size = new Point();
         Activity activity = (Activity)context;
-        if( Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R ) {
+        if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ) {
             // use non-deprecated equivalent of Display.getRealSize()
             WindowMetrics window_metrics = activity.getWindowManager().getCurrentWindowMetrics();
             final Rect bounds = window_metrics.getBounds();
@@ -2673,7 +2684,7 @@ public class CameraController2 extends CameraController {
                     // window size was small!
                     continue;
                 }
-                camera_features.preview_sizes.add(new CameraController.Size(camera_size.getWidth(), camera_size.getHeight()));
+                camera_features.preview_sizes.add(new Size(camera_size.getWidth(), camera_size.getHeight()));
             }
         }
 
@@ -3159,9 +3170,9 @@ public class CameraController2 extends CameraController {
      * @param extension               Extension to test.
      * @return                        If false, then none of the picture_sizes are supported by this extension.
      */
-    private boolean updatePictureSizesForExtension(List<CameraController.Size> picture_sizes, List<android.util.Size> extension_picture_sizes, int extension) {
+    private boolean updatePictureSizesForExtension(List<Size> picture_sizes, List<android.util.Size> extension_picture_sizes, int extension) {
         boolean has_picture_resolution = false;
-        for(CameraController.Size size : picture_sizes) {
+        for(Size size : picture_sizes) {
             if( extension_picture_sizes.contains(new android.util.Size(size.width, size.height)) ) {
                 if( MyDebug.LOG ) {
                     Log.d(TAG, "    picture size supports extension: " + size.width + " , " + size.height);
@@ -3188,9 +3199,9 @@ public class CameraController2 extends CameraController {
      * @param extension               Extension to test.
      * @return                        If false, then none of the preview_sizes are supported by this extension.
      */
-    private boolean updatePreviewSizesForExtension(List<CameraController.Size> preview_sizes, List<android.util.Size> extension_preview_sizes, int extension) {
+    private boolean updatePreviewSizesForExtension(List<Size> preview_sizes, List<android.util.Size> extension_preview_sizes, int extension) {
         boolean has_preview_resolution = false;
-        for(CameraController.Size size : preview_sizes) {
+        for(Size size : preview_sizes) {
             if( extension_preview_sizes.contains(new android.util.Size(size.width, size.height)) ) {
                 if( MyDebug.LOG ) {
                     Log.d(TAG, "    preview size supports extension: " + size.width + " , " + size.height);
@@ -4526,7 +4537,7 @@ public class CameraController2 extends CameraController {
         // Runs on the background "CameraBackground" handler/thread (not null/UI thread like the
         // main imageReader) — MLKit inference, even throttled, shouldn't risk blocking the UI.
         analysisImageReader.setOnImageAvailableListener(reader -> {
-            android.media.Image image = reader.acquireLatestImage();
+            Image image = reader.acquireLatestImage();
             if( image == null )
                 return;
             if( analysis_broken ) {
@@ -5376,9 +5387,9 @@ public class CameraController2 extends CameraController {
         return new Area(area_rect, metering_rectangle.getMeteringWeight());
     }
 
-    private CameraController.Face convertFromCameraFace(Rect sensor_rect, android.hardware.camera2.params.Face camera2_face) {
+    private Face convertFromCameraFace(Rect sensor_rect, android.hardware.camera2.params.Face camera2_face) {
         Rect area_rect = convertRectFromCamera2(sensor_rect, camera2_face.getBounds());
-        return new CameraController.Face(camera2_face.getScore(), area_rect);
+        return new Face(camera2_face.getScore(), area_rect);
     }
 
     @Override
@@ -5395,7 +5406,7 @@ public class CameraController2 extends CameraController {
             has_focus = true;
             camera_settings.af_regions = new MeteringRectangle[areas.size()];
             int i = 0;
-            for(CameraController.Area area : areas) {
+            for(Area area : areas) {
                 camera_settings.af_regions[i++] = convertAreaToMeteringRectangle(sensor_rect, area);
             }
             camera_settings.setAFRegions(previewBuilder);
@@ -5406,7 +5417,7 @@ public class CameraController2 extends CameraController {
             has_metering = true;
             camera_settings.ae_regions = new MeteringRectangle[areas.size()];
             int i = 0;
-            for(CameraController.Area area : areas) {
+            for(Area area : areas) {
                 camera_settings.ae_regions[i++] = convertAreaToMeteringRectangle(sensor_rect, area);
             }
             camera_settings.setAERegions(previewBuilder);
@@ -9186,7 +9197,7 @@ public class CameraController2 extends CameraController {
                         }
                         else {
                             last_faces_detected = camera_faces.length;
-                            CameraController.Face [] faces = new CameraController.Face[camera_faces.length];
+                            Face [] faces = new Face[camera_faces.length];
                             for(int i=0;i<camera_faces.length;i++) {
                                 faces[i] = convertFromCameraFace(sensor_rect, camera_faces[i]);
                             }
