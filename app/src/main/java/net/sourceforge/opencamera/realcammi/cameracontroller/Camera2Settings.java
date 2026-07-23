@@ -1,6 +1,7 @@
 package net.sourceforge.opencamera.realcammi.cameracontroller;
 
 import android.graphics.Rect;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.ColorSpaceTransform;
@@ -28,6 +29,8 @@ import java.util.Locale;
  */
 public class Camera2Settings {
     private static final String TAG = "Camera2Settings";
+
+    private CameraCharacteristics characteristics;
 
     private final CameraController2 camera_controller;
 
@@ -200,29 +203,44 @@ public class Camera2Settings {
     @RequiresApi(api = Build.VERSION_CODES.R)
     void setupBuilder(CaptureRequest.Builder builder, boolean is_still) {
 
-        // activates the camera's automatic exposure control (Auto-Exposure - AE).
-        //builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-        // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
-        //builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
-        // Corrects chromatic aberrations (colored fringes) with the correct constant.
-        //builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-        // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
-        // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
-        // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
-        // own pipeline, showing up as a visible color blotch in a corner of the photo.
-        //builder.set(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
-        // [REALCAMMI FORK] Uses the higher-precision color correction matrix computation instead of
-        // leaving COLOR_CORRECTION_MODE at the HAL default (typically FAST). Was only present in a
-        // dead/commented block upstream. Safe to set here (before setWhiteBalance()/manual WB logic
-        // below, which saves/restores whatever value is present on the builder at that point).
-        //builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_HIGH_QUALITY);
-        // Forces Tonemap to rebalance the gamma channel in the shadows.
+        // [REALCAMMI FORK] Backlit safety net: when the AI scene detector flags EXTREME_BACKLIT
+        // and Auto HDR either isn't enabled or isn't available on this device (no EXTENSION_HDR
+        // support), the HAL's normal AE would otherwise expose for the shadows and blow out the
+        // sky/highlights. Apply a mild negative bias only in that specific case — never as a
+        // blanket default — and never when the user has taken manual control of exposure/ISO,
+        // or when we're already inside an HDR extension session (which handles this on its own).
+        if( !camera_controller.isExtensionSession()
+                && !has_iso
+                && !has_ae_exposure_compensation
+                && camera_controller.getCurrentSceneCategory() == net.sourceforge.opencamera.realcammi.SceneDetector.SceneCategory.EXTREME_BACKLIT ) {
+            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -2);
+        }
 
-        //builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO);
+        if (!camera_controller.isExtensionSession()) {
+            // Starting image enhancement process
+            // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
+            Range<Integer> selectedFpsRange = new Range<>(15, 30); // Professional safe fallback for maximum device compatibility
 
-        // [REALCAMMI FORK] Disabled vs upstream (upstream always sets CONTROL_AF_TRIGGER_IDLE here).
-        // TODO: confirm/state the reason this was commented out.
+            if (characteristics != null) {
+                Range<Integer>[] availableRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+
+                if (availableRanges != null) {
+                    for (Range<Integer> range : availableRanges) {
+                        // Locate the standard professional range allowing exposure expansion down to 15 FPS
+                        if (range.getLower() <= 15 && range.getUpper() >= 30) {
+                            selectedFpsRange = range;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Applies the selected FPS range to the capture builder.
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, selectedFpsRange);
+        }
+
         if( !camera_controller.isExtensionSession() ) {
+            // [REALCAMMI FORK] Disabled vs upstream (upstream always sets CONTROL_AF_TRIGGER_IDLE here).
             // Tell the camera to cancel/idle the focus trigger
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
         }
@@ -401,9 +419,10 @@ public class Camera2Settings {
     // Main diagonal handles professional micro-contrast amplification (+8% Red, +5% Green, +6% Blue).
     // Horizontally balanced to sum exactly 100/100 (1.0) per row to lock absolute white point stability,
     // preserving micro-textures under low-light LED conditions, and neutralizing high-frequency chroma noise.
+    // Tune 1
     private static final Rational[] REALCAMMI_MATRIX_ELEMENTS = new Rational[] {
-            new Rational(108, 100), new Rational(-6, 100),  new Rational(-2, 100), // RED Row   (108 - 6 - 2 = 100)
-            new Rational(-3, 100),  new Rational(105, 100), new Rational(-2, 100), // GREEN Row (-3 + 105 - 2 = 100)
+            new Rational(106, 100), new Rational(-4, 100),  new Rational(-2, 100), // RED Row   (106 - 3 - 2 = 101)
+            new Rational(-3, 100),  new Rational(106, 100), new Rational(-2, 100), // GREEN Row (-3 + 105 - 2 = 100)
             new Rational(-1, 100),  new Rational(-5, 100),  new Rational(106, 100) // BLUE Row  (-1 - 5 + 106 = 100)
     };
     private static final ColorSpaceTransform REALCAMMI_COLOR_TRANSFORM = new ColorSpaceTransform(REALCAMMI_MATRIX_ELEMENTS);
@@ -454,7 +473,7 @@ public class Camera2Settings {
             RggbChannelVector temperatureVector = CameraController2.convertTemperatureToRggbVector(white_balance_temperature);
 
             // 2. HARDWARE ANTI-CLIPPING & EXPOSURE INTEGRITY SHIELD
-            float saturationFactor = 1.00f;
+            float saturationFactor = 1.10f;
             float finalRed = Math.min(Math.max(temperatureVector.getRed() * saturationFactor, 1.0f), 4.0f);
             float finalGe = Math.min(Math.max(temperatureVector.getGreenEven() * saturationFactor, 1.0f), 4.0f);
             float finalGo = Math.min(Math.max(temperatureVector.getGreenOdd() * saturationFactor, 1.0f), 4.0f);

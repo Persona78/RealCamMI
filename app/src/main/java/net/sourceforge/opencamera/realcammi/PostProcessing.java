@@ -618,6 +618,8 @@ public class PostProcessing {
             Imgproc.cvtColor(src, src_bgr, Imgproc.COLOR_RGBA2BGR);
 
             // [REALCAMMI FORK] preset selection: d / sigmaColor / sigmaSpace
+            // nr_d = area size
+            // nr_sigma = noise reduction strength
             int nr_d, nr_sigma;
             switch( NR_STRENGTH ) {
                 case NR_STRENGTH_LIGHT:
@@ -1099,9 +1101,10 @@ public class PostProcessing {
     // STOCK PIPELINE OVERTAKE: The base matrix operates as a clean neutral identity pass (1.0).
     // This stops double-stacking chromatic amplification, which was artificially inflating noise.
     // Color space transformation and luminance preservation are cleanly delegated to the graphics engine.
+    // Tune 2
     private static final float[] PRO_COLOR_MATRIX = new float[] {
-            1.00f,  0.00f,  0.00f,  0.00f,  0.00f,  // RED Row: Neutral identity baseline
-            0.00f,  1.00f,  0.00f,  0.00f,  0.00f,  // GREEN Row: Neutral identity baseline
+            0.980f,  0.00f,  0.00f,  0.00f,  0.00f,  // RED Row: Neutral identity baseline
+            0.00f,  0.980f,  0.00f,  0.00f,  0.00f,  // GREEN Row: Neutral identity baseline
             0.00f,  0.00f,  1.00f,  0.00f,  0.00f,  // BLUE Row: Neutral identity baseline
             0.00f,  0.00f,  0.00f,  1.00f,  0.00f   // ALPHA Row: Normal opacity configuration
     };
@@ -1145,7 +1148,7 @@ public class PostProcessing {
         // Applies a professional +10% software-level linear chromatic vibrancy enhancement.
         // Calibrated to maintain clean contrast boundaries without over-saturating light emissive zones.
         ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(1.10f);
+        saturationBoost.setSaturation(0.95f);
         cm.postConcat(saturationBoost);
 
         // 5. IN-PLACE MEMORY ARCHITECTURE (ANTI-OOM CRASH SHIELD FOR HIGH RESOLUTIONS)

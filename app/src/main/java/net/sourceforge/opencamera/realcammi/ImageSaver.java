@@ -2,6 +2,7 @@ package net.sourceforge.opencamera.realcammi;
 
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
 import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
+import net.sourceforge.opencamera.realcammi.HDRProcessor;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

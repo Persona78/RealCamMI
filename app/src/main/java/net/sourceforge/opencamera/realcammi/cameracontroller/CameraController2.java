@@ -926,23 +926,92 @@ public class CameraController2 extends CameraController {
                         // Tune 5
                         if( previewBuilder != null ) { // make sure camera wasn't released in the meantime
 
-                                //previewBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+                        //previewBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
 
-                                // Starting image enhancement process
-                                // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
-                                previewBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(15, 30));
-                                // Corrects chromatic aberrations (colored fringes) with the correct constant.
-                                //previewBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-                                // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
-                                // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
-                                // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
-                                // own pipeline, showing up as a visible color blotch in a corner of the photo.
-                                previewBuilder.set(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
+                        // Starting image enhancement process
+                        // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
+                            Range<Integer> selectedFpsRange = new Range<>(15, 30); // Professional safe fallback for maximum device compatibility
+                            if (characteristics != null) {
+                                Range<Integer>[] availableRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+                                if (availableRanges != null) {
+                                    for (Range<Integer> range : availableRanges) {
+                                        // Locate the standard professional range allowing exposure expansion down to 15 FPS
+                                        if (range.getLower() <= 15 && range.getUpper() >= 30) {
+                                            selectedFpsRange = range;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            previewBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, selectedFpsRange);
+
+                        // Corrects chromatic aberrations (colored fringes) with the correct constant.
+                            int optimalAberrationMode = CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_FAST; // Standard safe fallback
+                            if (characteristics != null) {
+                                int[] availableAberrationModes = characteristics.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES);
+                                if (availableAberrationModes != null) {
+                                    for (int mode : availableAberrationModes) {
+                                        // Prioritize high-quality processing engine to correct color fringing along object boundaries
+                                        if (mode == CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY) {
+                                            optimalAberrationMode = mode;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            previewBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, optimalAberrationMode);
+
+                        // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
+                        // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
+                        // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
+                        // own pipeline, showing up as a visible color blotch in a corner of the photo.
+                            int optimalShadingMode = CameraMetadata.SHADING_MODE_FAST; // Standard safe fallback for all devices
+                            if (characteristics != null) {
+                                int[] availableShadingModes = characteristics.get(CameraCharacteristics.SHADING_AVAILABLE_MODES);
+                                if (availableShadingModes != null) {
+                                    for (int mode : availableShadingModes) {
+                                        // Prioritize high-quality algorithmic processing to ensure uniform illumination across the image frame
+                                        if (mode == CameraMetadata.SHADING_MODE_HIGH_QUALITY) {
+                                            optimalShadingMode = mode;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            previewBuilder.set(CaptureRequest.SHADING_MODE, optimalShadingMode);
 
                             // Enable Optical Image Stabilization if phone's hardware supports it.
-                        /*if (supports_optical_stabilization) {
-                                previewBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON);
-                        }*/ // disable because it can crop image
+                            boolean oisApplied = false;
+                            if (characteristics != null) {
+                                int[] availableOisModes = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
+                                if (availableOisModes != null) {
+                                    for (int mode : availableOisModes) {
+                                        // Activating physical optical stabilization (OIS) to eliminate motion blur from hand tremors
+                                        if (mode == CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON) {
+                                            previewBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON);
+                                            previewBuilder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
+                                            oisApplied = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!oisApplied) {
+                                // Professional safe fallback: apply electronic stabilization (EIS) if physical OIS hardware is missing
+                                previewBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF);
+                                if (characteristics != null) {
+                                    int[] availableEisModes = characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
+                                    if (availableEisModes != null) {
+                                        for (int mode : availableEisModes) {
+                                            if (mode == CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON) {
+                                                previewBuilder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             try {
                                 // Protection against out-of-range firing during bursts (Prevents crash on the last shot)

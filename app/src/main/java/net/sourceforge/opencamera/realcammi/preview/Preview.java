@@ -5,7 +5,7 @@ import net.sourceforge.opencamera.realcammi.JavaImageFunctionsPreview;
 import net.sourceforge.opencamera.realcammi.JavaImageProcessing;
 import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
 //import net.sourceforge.opencamera.realcammi.MainActivity;
-import net.sourceforge.opencamera.realcammi.HDRProcessor;
+//import net.sourceforge.opencamera.realcammi.HDRProcessor;
 import net.sourceforge.opencamera.realcammi.MyApplicationInterface;
 import net.sourceforge.opencamera.realcammi.SceneDetector;
 import net.sourceforge.opencamera.realcammi.MyDebug;
@@ -65,8 +65,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorManager;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraExtensionCharacteristics;
-import android.hardware.camera2.CameraMetadata;
-import android.hardware.camera2.CaptureRequest;
+//import android.hardware.camera2.CameraMetadata;
+//import android.hardware.camera2.CaptureRequest;
 import android.location.Location;
 import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
@@ -639,7 +639,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
 
 
                         if (MyDebug.LOG) {
-                            Log.d(TAG, "Sensor Detetado: " + (totalPixels / 1000000) + "MP (" + sensorWidth + "x" + sensorHeight + ") -> Ajustado focus_size para: " + focus_size);
+                            Log.d(TAG, "Sensor Detected: " + (totalPixels / 1000000) + "MP (" + sensorWidth + "x" + sensorHeight + ") -> Adjusted focus_size to: " + focus_size);
                         }
                     }
                 }
@@ -647,7 +647,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
         } catch (Exception e) {
             // Safeguard: If it fails or the device uses the Camera1 API, safely fall back to the default.
             if (MyDebug.LOG) {
-                Log.e(TAG, "Não foi possível ler as propriedades do sensor. Usando tamanho padrão.", e);
+                Log.e(TAG, "Unable to read sensor properties. Using default size.", e);
             }
             focus_size = 80;
         }
@@ -663,13 +663,13 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
         rect.top = (int)focus_y - focus_size;
         rect.bottom = (int)focus_y + focus_size;
 
-        // Algoritmo de Clipping de Bordas
+        // Edge clipping algorithm
         if (rect.left < -1000) rect.left = -1000;
         if (rect.right > 1000) rect.right = 1000;
         if (rect.top < -1000) rect.top = -1000;
         if (rect.bottom > 1000) rect.bottom = 1000;
 
-        // Escudo definitivo Anti-Crash
+        // // Final anti-crash safeguard
         if (rect.left >= rect.right || rect.top >= rect.bottom) {
             if (MyDebug.LOG) Log.e(TAG, "Invalid focus rectangle generated, aborting custom area.");
             return null;
