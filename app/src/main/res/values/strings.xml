@@ -75,8 +75,7 @@
     <string name="preference_category_camera_effects">Camera Effects</string>
     <string name="preference_auto_stabilise">Auto-level</string>
     <string name="preference_auto_stabilise_summary">Images will be rotated so they are automatically level (photos only) (slower to take photos, and may fail on devices with too low memory)</string>
-    <string name="preference_color_correction" translatable="false">Color correction</string>
-
+    
     <!-- [REALCAMMI FORK] OpenCV post-processing feature names -->
     <string name="preference_opencv_sharpen" translatable="false">Sharpening (OpenCV)</string>
     <string name="preference_opencv_sharpen_summary" translatable="false">Applies adaptive Unsharp Mask sharpening to each photo after capture. Enhances fine detail without colour fringing. Applied after noise reduction.</string>
@@ -96,7 +95,6 @@
     <string name="preference_show_opencv_clahe_summary" translatable="false">Whether to show an on-screen icon to enable or disable OpenCV CLAHE contrast enhancement.</string>
     <string name="preference_show_opencv_blur_detect" translatable="false">Show blur detection icon</string>
     <string name="preference_show_opencv_blur_detect_summary" translatable="false">Whether to show an on-screen icon to enable or disable OpenCV blur detection warnings.</string>
-    <string name="preference_color_correction_summary" translatable="false">Corrects a slight blue colour cast versus the stock camera app (post-processing, applied after capture; the photo is captured at full quality so this doesn\'t affect the saved image quality)</string>
     <string name="preference_color_effect">Apply a color effect</string>
     <string name="preference_color_effect_summary">Applies the selected color effect to the photo</string>
     <string name="preference_scene_mode">Apply a scene mode</string>
@@ -781,11 +779,13 @@
     <string name="auto_level_enable" translatable="false">Enable auto-level</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="auto_level_disable" translatable="false">Disable auto-level</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
 
-    <string name="preference_show_color_correction" translatable="false">Show color correction icon</string>
-    <string name="preference_show_color_correction_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling color boost. When enabled, a slight color boost will be applied as a post-processing step after capture.</string>
-    <string name="color_correction_enable" translatable="false">Enable color correction</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
-    <string name="color_correction_disable" translatable="false">Disable color correction</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
-
+	<string name="preference_color_correction" translatable="false">Color contrast boost</string>
+    <string name="preference_show_color_correction" translatable="false">Show color contrast boost icon</string>
+    <string name="preference_show_color_correction_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling color contrast boost. When enabled, a slight contrast color boost will be applied as a post-processing step after capture.</string>
+    <string name="color_correction_enable" translatable="false">Enable color contrast boost</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
+    <string name="color_correction_disable" translatable="false">Disable color contrast boost</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
+    <string name="preference_color_correction_summary" translatable="false">Applies a slight color contrast to the image.; the photo is captured at full quality so this doesn\'t affect the saved image quality)</string>
+    
     <!-- [REALCAMMI FORK] OpenCV button content descriptions -->
     <string name="opencv_sharpen_enable" translatable="false">Enable sharpening</string>
     <string name="opencv_sharpen_disable" translatable="false">Disable sharpening</string>

@@ -202,7 +202,6 @@ public class Camera2Settings {
     // Tune 4
     @RequiresApi(api = Build.VERSION_CODES.R)
     void setupBuilder(CaptureRequest.Builder builder, boolean is_still) {
-
         // [REALCAMMI FORK] Backlit safety net: when the AI scene detector flags EXTREME_BACKLIT
         // and Auto HDR either isn't enabled or isn't available on this device (no EXTENSION_HDR
         // support), the HAL's normal AE would otherwise expose for the shadows and blow out the
@@ -473,7 +472,7 @@ public class Camera2Settings {
             RggbChannelVector temperatureVector = CameraController2.convertTemperatureToRggbVector(white_balance_temperature);
 
             // 2. HARDWARE ANTI-CLIPPING & EXPOSURE INTEGRITY SHIELD
-            float saturationFactor = 1.10f;
+            float saturationFactor = 1.15f;
             float finalRed = Math.min(Math.max(temperatureVector.getRed() * saturationFactor, 1.0f), 4.0f);
             float finalGe = Math.min(Math.max(temperatureVector.getGreenEven() * saturationFactor, 1.0f), 4.0f);
             float finalGo = Math.min(Math.max(temperatureVector.getGreenOdd() * saturationFactor, 1.0f), 4.0f);

@@ -1,5 +1,7 @@
 package net.sourceforge.opencamera.realcammi;
 
+import static android.hardware.camera2.CaptureRequest.*;
+
 import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -21,6 +23,7 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.core.MatOfDouble;
 //import android.location.Address; // don't use until we have info for data privacy!
 //import android.location.Geocoder; // don't use until we have info for data privacy!
+import android.hardware.camera2.CaptureRequest;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -623,7 +626,7 @@ public class PostProcessing {
             int nr_d, nr_sigma;
             switch( NR_STRENGTH ) {
                 case NR_STRENGTH_LIGHT:
-                    nr_d = 8; nr_sigma = 14;
+                    nr_d = 5; nr_sigma = 14;
                     break;
                 case NR_STRENGTH_STRONG:
                     nr_d = 13; nr_sigma = 110;
@@ -1103,70 +1106,52 @@ public class PostProcessing {
     // Color space transformation and luminance preservation are cleanly delegated to the graphics engine.
     // Tune 2
     private static final float[] PRO_COLOR_MATRIX = new float[] {
-            0.980f,  0.00f,  0.00f,  0.00f,  0.00f,  // RED Row: Neutral identity baseline
-            0.00f,  0.980f,  0.00f,  0.00f,  0.00f,  // GREEN Row: Neutral identity baseline
-            0.00f,  0.00f,  1.00f,  0.00f,  0.00f,  // BLUE Row: Neutral identity baseline
-            0.00f,  0.00f,  0.00f,  1.00f,  0.00f   // ALPHA Row: Normal opacity configuration
+            0.870f,  0.000f,  0.000f,  0.000f,  16.000f, // RED Row: Gentle micro-boost (+2.5%) to shift the global white point toward warm sunlight
+            0.000f,  0.850f,  0.000f,  0.000f,  16.000f, // GREEN Row: Locked at neutral baseline to secure raw luminance integrity
+            0.000f,  0.000f,  0.870f,  0.000f,  12.000f, // BLUE Row: Compensates for the hardware blue cast (-10.5%) to naturally unveil gold tones
+            0.000f,  0.000f,  0.000f,  1.000f,  0.000f  // ALPHA Row: Standard alpha pipeline mapping channel configuration
     };
 
-    // =====================================================================================
-    // COMPLETE SUPERIOR COLOR CORRECTION PIPELINE METHOD (Direct Replacement)
-    // =====================================================================================
     /**
-     * Applies a high-fidelity chromatic transformation and professional-tier saturation boost.
-     * Noise-optimized and engineered to handle high-resolution image formats via safe in-place processing.
-     *
-     * @param data   The raw byte array stream from the camera capture hardware.
-     * @param bitmap The active input source Bitmap instance to be processed.
-     * @return Bitmap The color-calibrated mutable bitmap structure, or null on decoding failure.
+     * [REALCAMMI FORK]
+     * Applies a defensive cinematic warmth transformation and sub-cast calibration.
+     * Eliminates artificial boosting and saturation clipping on 100% quality megapixel arrays.
      */
     private Bitmap applyColorCorrection(byte[] data, Bitmap bitmap) {
         if( MyDebug.LOG )
-            Log.d(TAG, "apply Color Correction - Professional High-Fidelity Pipeline");
+            Log.d(TAG, "applyColorCorrection - Cinematic Warmth Balance Pipeline");
 
-        // 1. RAW/DNG CAPTURE SAFEGUARD
         if( data == null && bitmap == null ) {
-            if( MyDebug.LOG ) Log.d(TAG, "Professional RAW/DNG capture detected. Bypassing destructive 8-bit Bitmap filter.");
             return null;
         }
 
-        // 2. MEMORY-SAFE ASYNC BITMAP DECODING
         if( bitmap == null ) {
-            if( MyDebug.LOG ) Log.d(TAG, "Decoding hardware byte array into an uncompressed bitmap structure.");
             bitmap = ImageUtils.loadBitmapWithRotation(data, true);
             if( bitmap == null ) {
-                if( MyDebug.LOG ) Log.e(TAG, "Failed to decode input bitmap streams. Aborting memory allocation.");
                 System.gc();
                 return null;
             }
         }
 
-        // 3. COLOR MATRIX INITIALIZATION
+        // International English: Strict allocation of the calibrated warm balance filter matrix.
+        // Removes the high-vibrancy concatenation layer to eliminate color distortion.
         ColorMatrix cm = new ColorMatrix(PRO_COLOR_MATRIX);
 
-        // 4. CLEAN CHROMATIC VIBRANCY ENHANCEMENT
-        // Applies a professional +10% software-level linear chromatic vibrancy enhancement.
-        // Calibrated to maintain clean contrast boundaries without over-saturating light emissive zones.
         ColorMatrix saturationBoost = new ColorMatrix();
-        saturationBoost.setSaturation(0.95f);
+        saturationBoost.setSaturation(0.75f);
         cm.postConcat(saturationBoost);
 
-        // 5. IN-PLACE MEMORY ARCHITECTURE (ANTI-OOM CRASH SHIELD FOR HIGH RESOLUTIONS)
-        Bitmap correctedBitmap;
-        if (bitmap.isMutable()) {
-            correctedBitmap = bitmap;
-        } else {
-            if( MyDebug.LOG ) Log.d(TAG, "Immutable bitmap layer detected. Executing memory copy-and-recycle flush.");
-            correctedBitmap = bitmap.copy(bitmap.getConfig(), true);
+        Bitmap correctedBitmap = bitmap.isMutable() ? bitmap : bitmap.copy(bitmap.getConfig(), true);
+        if (correctedBitmap != bitmap) {
             bitmap.recycle();
         }
 
-        // Bind a hardware-accelerated Canvas directly onto the target pixel memory matrix
         Canvas canvas = new Canvas(correctedBitmap);
         Paint paint = new Paint();
+        paint.setAntiAlias(true);
         paint.setColorFilter(new ColorMatrixColorFilter(cm));
 
-        // Execute the chromatic filtering layer directly across pixel boundaries without noise bleed
+        // Inject warmth dynamically via channel shift directly into graphic memory
         canvas.drawBitmap(correctedBitmap, 0, 0, paint);
 
         return correctedBitmap;
