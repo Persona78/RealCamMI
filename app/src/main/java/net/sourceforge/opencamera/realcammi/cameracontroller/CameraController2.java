@@ -804,12 +804,30 @@ public class CameraController2 extends CameraController {
             if( MyDebug.LOG )
                 Log.d(TAG, "read " + bytes.length + " bytes");
             buffer.get(bytes);
-            // [REALCAMMI FORK] Software crop workaround: Xiaomi's CamX HAL ignores CONTROL_ZOOM_RATIO/SCALER_CROP_REGION
-            // during still capture (confirmed via logcat: IQSetupTriggerData "pZoomRatioData is NULL"),
-            // so we crop the JPEG ourselves after capture. Gated to is_xiaomi/is_ulefone deliberately:
-            // on devices whose HAL applies zoom correctly, this software crop would run on top of a
-            // frame the HAL already cropped, effectively doubling the zoom and losing field of view.
-            if ((is_xiaomi || is_ulefone) && camera_settings.current_zoom_ratio > 1.0f) {
+
+            // [REALCAMMI FORK BUGFIX 2026-08-01] Software crop workaround, DISABLED for now.
+            // History: originally added because Xiaomi's CamX HAL ignored CONTROL_ZOOM_RATIO/
+            // SCALER_CROP_REGION during still capture (confirmed via logcat: IQSetupTriggerData
+            // "pZoomRatioData is NULL"), so the app cropped the JPEG itself after capture. It was
+            // gated to is_xiaomi/is_ulefone, with this exact warning already written above it: "on
+            // devices whose HAL applies zoom correctly, this software crop would run on top of a
+            // frame the HAL already cropped, effectively doubling the zoom and losing field of
+            // view" - which is precisely what started happening on the Redmi Note 13 Pro 5G
+            // (garnet, 200MP): confirmed on-device via a preview-vs-photo comparison at 2.0x (photo
+            // came out ~2x more zoomed than the preview, and the focus area no longer matched the
+            // framing) that this device's current HAL/firmware now applies zoom correctly for still
+            // capture, so the software crop was actively duplicating it (2.0x requested -> ~4x
+            // effective).
+            //
+            // Fix applied: DEBUG_DISABLE_SOFTWARE_ZOOM_CROP is permanently true, and the is_xiaomi/
+            // is_ulefone device gating was removed - the crop below no longer runs for ANY device.
+            // IMPORTANT: is_ulefone has NOT been re-tested since this regression was found. If a
+            // "zoom doesn't crop" report ever comes back specifically on Ulefone, this is the first
+            // place to check - it may mean that device's HAL still needs this workaround, in which
+            // case re-add a device check here (after repeating the same preview-vs-photo test on
+            // that device) rather than re-enabling this unconditionally for everyone.
+            final boolean DEBUG_DISABLE_SOFTWARE_ZOOM_CROP = true;
+            if ( !DEBUG_DISABLE_SOFTWARE_ZOOM_CROP && camera_settings.current_zoom_ratio > 1.0f) {
                 try {
                     BitmapFactory.Options options = new BitmapFactory.Options();
                     Bitmap originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);

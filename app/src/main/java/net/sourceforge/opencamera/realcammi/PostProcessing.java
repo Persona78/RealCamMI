@@ -616,8 +616,8 @@ public class PostProcessing {
     // off); with NR enabled the noise is far less apparent even at 0.15 - this value is a
     // compromise so the baseline pass stays safe even when NR is off.
     // Tune 13
-    private static final float BASELINE_SHARPEN_AMOUNT = 0.09f; // [REALCAMMI FORK 2026-08-01] lowered from 0.12f - user-confirmed most stable value on-device
-    private static final double BASELINE_SHARPEN_BLUR_RADIUS = 1.2; // [REALCAMMI FORK 2026-08-01] raised from 1.0 - user-confirmed most stable value on-device
+    private static final float BASELINE_SHARPEN_AMOUNT = 0.092f; // [REALCAMMI FORK 2026-08-01] lowered from 0.12f - user-confirmed most stable value on-device
+    private static final double BASELINE_SHARPEN_BLUR_RADIUS = 1.1; // [REALCAMMI FORK 2026-08-01] raised from 1.0 - user-confirmed most stable value on-device
 
     // [REALCAMMI FORK PERFORMANCE 2026-07-29] The two heaviest ops here (GaussianBlur,
     // addWeighted) used to run on the full 4-channel RGBA Mat straight from bitmapToMat -
