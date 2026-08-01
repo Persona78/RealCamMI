@@ -308,7 +308,7 @@ RealCamMI is licensed under the **GNU General Public License v3.0 or later**, th
 
 ![Download app](docs/images/download.png)
 
-[RealCamMI](https://www.mediafire.com/file/c3fbfbh4rte178u/RealCamMI-release.apk/file)
+[RealCamMI](https://www.mediafire.com/file/nnqm3jo6cn385bv/RealCamMI-release.apk/file)
 
 ## Disclaimer
 
