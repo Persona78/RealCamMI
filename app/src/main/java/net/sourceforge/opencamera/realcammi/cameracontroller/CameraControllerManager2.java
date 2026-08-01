@@ -220,7 +220,6 @@ public class CameraControllerManager2 extends CameraControllerManager {
                 } catch (Throwable ignored) {}
             }
 
-            if (is_samsung || is_samsung_galaxy_s || is_samsung_galaxy_f || is_xiaomi || is_ulefone) {
                 if (MyDebug.LOG)
                     Log.d(TAG, "Running hidden camera probe...");
                 for (int i = 2; i <= 9; i++) {
@@ -242,7 +241,7 @@ public class CameraControllerManager2 extends CameraControllerManager {
                         } catch (Throwable ignored) {}
                     }
                 }
-            }
+
 
         } catch (Throwable e) {
             MyDebug.logStackTrace(TAG, "Exception building camera ID list", e);

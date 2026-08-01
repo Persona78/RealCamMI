@@ -52,6 +52,15 @@ public class PostProcessing {
 
     private final Paint p = new Paint();
 
+    // [REALCAMMI FORK BUGFIX] Lazy-initialized singleton, reused across every photo for the
+    // whole lifetime of this PostProcessing instance (itself created once in ImageSaver's
+    // constructor - see ImageSaver.java). Previously a new DepthEffect (and therefore a new
+    // TFLite Interpreter, loading/allocating the ~63MB MiDaS model) was created and destroyed
+    // on every single photo when Depth Blur was enabled - the dominant cost of that feature,
+    // especially on lower-end SoCs. Released via close() below, called from
+    // ImageSaver.onDestroy().
+    private DepthEffect depthEffect;
+
     PostProcessing(MainActivity main_activity) {
         if( MyDebug.LOG )
             Log.d(TAG, "PostProcessing");
@@ -533,9 +542,14 @@ public class PostProcessing {
 
     // =========================================================================
     // [REALCAMMI FORK] OpenCV post-processing methods
-    // All methods follow the same pattern: accept a Bitmap, convert to OpenCV
-    // Mat, process, convert back. OpenCV must be initialised before calling
-    // (handled by OpenCameraApplication via OpenCVLoader.initLocal()).
+    // detectAndWarnBlur() still follows the original pattern: accept a Bitmap, convert to
+    // OpenCV Mat, process, convert back. The five methods chained in postProcessBitmap()'s
+    // consolidated block (applyOpenCVNRMat, applyBaselineSharpenMat, applyOpenCVSharpenMat,
+    // applyTonemapDesaturationCompensationMat, applyOpenCVCLAHEMat - see Item A comment there)
+    // instead accept and return a BGR Mat directly, consuming/releasing their input and
+    // returning a new Mat, so the Bitmap<->Mat conversion only happens once at the boundary
+    // of that whole block rather than once per method. OpenCV must be initialised before
+    // calling any of these (handled by OpenCameraApplication via OpenCVLoader.initLocal()).
     // =========================================================================
 
     /** Applies adaptive sharpening via Unsharp Mask (USM).
@@ -547,42 +561,103 @@ public class PostProcessing {
      */
     // [REALCAMMI FORK] Piece 4 of AI scene detection: was a hardcoded addWeighted() call at a
     // fixed amount=0.5 ("Soft" on the scale above). Now an instance field, set in
-    // postProcessBitmap() right before applyOpenCVSharpen() runs: INDOOR gets a modest bump to
+    // postProcessBitmap() right before applyOpenCVSharpenMat() runs: INDOOR gets a modest bump to
     // 0.65 (still well short of the "Moderate" 0.8 tier) to help text/fine-detail legibility;
     // everything else keeps the previous default of 0.5.
-    private float sharpen_amount = 0.5f;
+    private float sharpen_amount = 0.75f;
 
-    private Bitmap applyOpenCVSharpen(Bitmap bitmap) {
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item A] Converted to operate directly on a BGR
+    // Mat (consumed and released, new Mat returned) instead of taking/returning a Bitmap and
+    // doing its own bitmapToMat/matToBitmap round trip. Called only from the consolidated
+    // OpenCV block in postProcessBitmap() - see the comment there for the full rationale.
+    // Previously ran on the raw 4-channel RGBA Mat straight from bitmapToMat (including the
+    // Alpha channel, always 255 and discarded by JPEG) - now runs on 3-channel BGR like
+    // applyBaselineSharpenMat(), for the same ~25% reduction in the two expensive ops. Same
+    // maths (Gaussian blur radius 1.15, unsharp mask amount = sharpen_amount) as before.
+    private Mat applyOpenCVSharpenMat(Mat bgr) {
         if( MyDebug.LOG )
-            Log.d(TAG, "applyOpenCVSharpen");
-        if( bitmap == null )
+            Log.d(TAG, "applyOpenCVSharpenMat");
+        if( bgr == null )
             return null;
         try {
-            Mat src = new Mat();
-            Utils.bitmapToMat(bitmap, src);
-
             Mat blurred = new Mat();
-            Imgproc.GaussianBlur(src, blurred, new Size(0, 0), 1.15); //default 1.5
+            Imgproc.GaussianBlur(bgr, blurred, new Size(0, 0), 1.15); //default 1.5
 
             // Unsharp mask: sharpened = src * (1 + amount) - blurred * amount
             Mat sharpened = new Mat();
             // sharpen_amount is set dynamically in postProcessBitmap() based on AI scene
             // category - see field comment above for the value scale and current logic.
-            Core.addWeighted(src, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0, sharpened);
+            Core.addWeighted(bgr, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0, sharpened);
 
-            Utils.matToBitmap(sharpened, bitmap);
-
-            src.release();
             blurred.release();
-            sharpened.release();
+            bgr.release();
+            return sharpened;
         } catch(Exception e) {
             if( MyDebug.LOG )
-                Log.e(TAG, "applyOpenCVSharpen failed: " + e.getMessage());
+                Log.e(TAG, "applyOpenCVSharpenMat failed: " + e.getMessage());
+            return bgr;
         }
-        return bitmap;
     }
 
-    // [REALCAMMI FORK] NR strength presets for applyOpenCVNR(). Unlike the Camera2 HAL's
+    // [REALCAMMI FORK] Always-on, lightweight counterpart to applyOpenCVSharpenMat() above: same
+    // Unsharp Mask technique, but a much smaller blur radius and amount, meant to be applied to
+    // every photo unconditionally (not behind the "Sharpening (OpenCV)" toggle) as a subtle,
+    // permanent part of the image pipeline - closer to what a good stock camera ISP already does
+    // as standard, not a stylistic effect a user has to opt into. On the 0.5 (Soft) / 0.8
+    // (Moderate) / 1.2 (High) scale documented above applyOpenCVSharpenMat(), 0.12 sits well below
+    // even "Soft" - intentionally subtle enough to not be a visible double-sharpening artifact
+    // when the toggle-based pass also runs right after it (in postProcessBitmap()), which is by
+    // design: the toggle becomes an optional extra boost layered on top of this permanent baseline,
+    // rather than the only source of sharpening.
+    // [REALCAMMI FORK TUNING 2026-07-30] Lowered from 0.15 to 0.12 - confirmed on-device
+    // (Ulefone, indoor/low-light, Noise Reduction toggle off) that the always-on baseline
+    // sharpen was amplifying visible sensor noise with nothing (NR) to suppress it first.
+    // This was the first real test of this exact combination (indoor/low-light/all toggles
+    // off); with NR enabled the noise is far less apparent even at 0.15 - this value is a
+    // compromise so the baseline pass stays safe even when NR is off.
+    // Tune 13
+    private static final float BASELINE_SHARPEN_AMOUNT = 0.09f; // [REALCAMMI FORK 2026-08-01] lowered from 0.12f - user-confirmed most stable value on-device
+    private static final double BASELINE_SHARPEN_BLUR_RADIUS = 1.2; // [REALCAMMI FORK 2026-08-01] raised from 1.0 - user-confirmed most stable value on-device
+
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29] The two heaviest ops here (GaussianBlur,
+    // addWeighted) used to run on the full 4-channel RGBA Mat straight from bitmapToMat -
+    // including the Alpha channel, which is always 255 for a captured photo and is discarded
+    // entirely by the final JPEG compress() (JPEG has no alpha support at all). That's 25% of
+    // the channel-work in both operations spent on data that never reaches the saved file.
+    // Now converts to 3-channel BGR first (a cheap channel reorder/drop, not a colour-space
+    // transform like Lab) and back to RGBA at the end (cvtColor sets Alpha=255 automatically
+    // on the 3->4 channel conversion) - same visual result, ~25% less work in the two
+    // expensive passes.
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item A] Converted to operate directly on a BGR
+    // Mat (consumed and released, new Mat returned) instead of taking/returning a Bitmap and
+    // doing its own bitmapToMat/RGBA<->BGR/matToBitmap round trip - the 2026-07-29 Alpha-channel
+    // optimisation documented above already converted to BGR internally, so this Mat-native
+    // version simply drops the now-redundant conversions at its own entry/exit, since the
+    // caller (the consolidated OpenCV block in postProcessBitmap()) already hands it a BGR Mat
+    // and expects a BGR Mat back. Same maths as before.
+    private Mat applyBaselineSharpenMat(Mat bgr) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "applyBaselineSharpenMat");
+        if( bgr == null )
+            return null;
+        try {
+            Mat blurred = new Mat();
+            Imgproc.GaussianBlur(bgr, blurred, new Size(0, 0), BASELINE_SHARPEN_BLUR_RADIUS);
+
+            Mat sharpened_bgr = new Mat();
+            Core.addWeighted(bgr, 1.0 + BASELINE_SHARPEN_AMOUNT, blurred, -BASELINE_SHARPEN_AMOUNT, 0, sharpened_bgr);
+
+            blurred.release();
+            bgr.release();
+            return sharpened_bgr;
+        } catch(Exception e) {
+            if( MyDebug.LOG )
+                Log.e(TAG, "applyBaselineSharpenMat failed: " + e.getMessage());
+            return bgr;
+        }
+    }
+
+    // [REALCAMMI FORK] NR strength presets for applyOpenCVNRMat(). Unlike the Camera2 HAL's
     // NOISE_REDUCTION_MODE (FAST/MINIMAL/HIGH_QUALITY — a fixed vendor black box with no
     // strength parameter), these bilateral filter values ARE continuously tunable, which is
     // why NR strength control lives here rather than in the HAL mode selection.
@@ -595,7 +670,7 @@ public class PostProcessing {
     private static final int NR_STRENGTH_STRONG = 2;
     // [REALCAMMI FORK] Piece 4 of AI scene detection: this used to be `static final`, hardcoded
     // to NR_STRENGTH_LIGHT. Now it's an instance field, set in postProcessBitmap() right before
-    // applyOpenCVNR() runs, based on main_activity.getPreview().getCameraController()
+    // applyOpenCVNRMat() runs, based on main_activity.getPreview().getCameraController()
     // .getCurrentSceneCategory(): LOW_LIGHT -> STRONG, everything else -> LIGHT (the previous
     // hardcoded default, unchanged for STANDARD/EXTREME_BACKLIT/INDOOR).
     private int NR_STRENGTH = NR_STRENGTH_LIGHT;
@@ -607,26 +682,23 @@ public class PostProcessing {
      *  instead of a single hardcoded d=9, sigmaColor=75, sigmaSpace=75.
      */
     // Tune 9
-    private Bitmap applyOpenCVNR(Bitmap bitmap) {
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item A] Converted to operate directly on a BGR
+    // Mat (consumed and released, new Mat returned) instead of taking/returning a Bitmap and
+    // doing its own bitmapToMat/RGBA<->BGR/matToBitmap round trip. Called only from the
+    // consolidated OpenCV block in postProcessBitmap(). Same preset table/maths as before.
+    private Mat applyOpenCVNRMat(Mat bgr) {
         if( MyDebug.LOG )
-            Log.d(TAG, "applyOpenCVNR");
-        if( bitmap == null )
+            Log.d(TAG, "applyOpenCVNRMat");
+        if( bgr == null )
             return null;
         try {
-            Mat src = new Mat();
-            Utils.bitmapToMat(bitmap, src);
-
-            // Bilateral filter requires 8-bit single or 3-channel image
-            Mat src_bgr = new Mat();
-            Imgproc.cvtColor(src, src_bgr, Imgproc.COLOR_RGBA2BGR);
-
             // [REALCAMMI FORK] preset selection: d / sigmaColor / sigmaSpace
             // nr_d = area size
             // nr_sigma = noise reduction strength
             int nr_d, nr_sigma;
             switch( NR_STRENGTH ) {
                 case NR_STRENGTH_LIGHT:
-                    nr_d = 5; nr_sigma = 14;
+                    nr_d = 10; nr_sigma = 22;
                     break;
                 case NR_STRENGTH_STRONG:
                     nr_d = 13; nr_sigma = 110;
@@ -638,21 +710,15 @@ public class PostProcessing {
             }
 
             Mat filtered = new Mat();
-            Imgproc.bilateralFilter(src_bgr, filtered, nr_d, nr_sigma, nr_sigma);
+            Imgproc.bilateralFilter(bgr, filtered, nr_d, nr_sigma, nr_sigma);
 
-            Mat result_rgba = new Mat();
-            Imgproc.cvtColor(filtered, result_rgba, Imgproc.COLOR_BGR2RGBA);
-            Utils.matToBitmap(result_rgba, bitmap);
-
-            src.release();
-            src_bgr.release();
-            filtered.release();
-            result_rgba.release();
+            bgr.release();
+            return filtered;
         } catch(Exception e) {
             if( MyDebug.LOG )
-                Log.e(TAG, "applyOpenCVNR failed: " + e.getMessage());
+                Log.e(TAG, "applyOpenCVNRMat failed: " + e.getMessage());
+            return bgr;
         }
-        return bitmap;
     }
 
     /** Applies CLAHE (Contrast Limited Adaptive Histogram Equalisation).
@@ -662,26 +728,25 @@ public class PostProcessing {
      *  [REALCAMMI FORK] Tile grid is now scaled to image resolution instead of a
      *  fixed 8x8: on a 12MP+ photo, 8x8 gives ~510x382px tiles, far too coarse to
      *  recover fine local contrast (e.g. sand/water sparkle). Target ~256px tiles instead.
-     *  clipLimit=2.0: raising the tile grid density alone (above) already gives a stronger
+     *  clipLimit=2.2: raising the tile grid density alone (above) already gives a stronger
      *  contrast punch than the original fixed 8x8 grid, so clipLimit was kept moderate
      *  rather than also raised to 3.0 — 3.0 was tried and found too strong/exaggerated
      *  on real shots once combined with the finer tile grid.
      *  Note: the a/b chroma compensation that used to live in this function has moved to
-     *  its own applyTonemapDesaturationCompensation(), which runs unconditionally on every
+     *  its own applyTonemapDesaturationCompensationMat(), which runs unconditionally on every
      *  photo regardless of this CLAHE toggle — see that method for the rationale.
      */
-    private Bitmap applyOpenCVCLAHE(Bitmap bitmap) {
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item A] Converted to operate directly on a BGR
+    // Mat (consumed and released, new Mat returned) instead of taking/returning a Bitmap and
+    // doing its own bitmapToMat/RGBA<->BGR/matToBitmap round trip. Called only from the
+    // consolidated OpenCV block in postProcessBitmap(). Same tile-grid sizing, clipLimit, and
+    // L-channel-only CLAHE logic as before (including the leak/double-free fixes noted above).
+    private Mat applyOpenCVCLAHEMat(Mat bgr) {
         if( MyDebug.LOG )
-            Log.d(TAG, "applyOpenCVCLAHE");
-        if( bitmap == null )
+            Log.d(TAG, "applyOpenCVCLAHEMat");
+        if( bgr == null )
             return null;
         try {
-            Mat src = new Mat();
-            Utils.bitmapToMat(bitmap, src);
-
-            // Convert RGBA → BGR → Lab
-            Mat bgr = new Mat();
-            Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR);
             Mat lab = new Mat();
             Imgproc.cvtColor(bgr, lab, Imgproc.COLOR_BGR2Lab);
 
@@ -692,52 +757,35 @@ public class PostProcessing {
             // [REALCAMMI FORK] tile grid scaled to resolution instead of fixed 8x8
             int tiles_x = Math.max(8, bgr.cols() / 256);
             int tiles_y = Math.max(8, bgr.rows() / 256);
-            // [REALCAMMI FORK BUGFIX] clipLimit was hardcoded to 1.1, contradicting the class
-            // doc comment above (clipLimit=3.0, raised from 2.0 for the finer tile grid).
-            // Restored to the documented/intended value.
             org.opencv.imgproc.CLAHE clahe = Imgproc.createCLAHE(2.2, new Size(tiles_x, tiles_y)); //Default value 3.0
             Mat l_orig = channels.get(0);
             Mat l_enhanced = new Mat();
             clahe.apply(l_orig, l_enhanced);
             // [REALCAMMI FORK BUGFIX] release the original L-channel Mat before the list loses
-            // its only reference to it via set() below — otherwise it's a native memory leak on
-            // every photo processed with CLAHE enabled (the cleanup loop further down only sees
-            // l_enhanced afterwards, never l_orig).
+            // its only reference to it via set() below — see original bugfix note.
             l_orig.release();
             channels.set(0, l_enhanced);
 
-            // [REALCAMMI FORK NOTE] the a/b chroma compensation that used to live here was
-            // moved into its own applyTonemapDesaturationCompensation(), which now runs
-            // unconditionally in postProcessBitmap() regardless of whether this CLAHE toggle
-            // is on — see that method for the full rationale. This function now only does the
-            // L-channel local contrast enhancement CLAHE was originally meant for.
-
-            // Merge back and convert to RGBA
+            // Merge back and convert to BGR
             Mat lab_enhanced = new Mat();
             Core.merge(channels, lab_enhanced);
             Mat bgr_enhanced = new Mat();
             Imgproc.cvtColor(lab_enhanced, bgr_enhanced, Imgproc.COLOR_Lab2BGR);
-            Mat result_rgba = new Mat();
-            Imgproc.cvtColor(bgr_enhanced, result_rgba, Imgproc.COLOR_BGR2RGBA);
-            Utils.matToBitmap(result_rgba, bitmap);
 
-            src.release();
             bgr.release();
             lab.release();
             for(Mat ch : channels) ch.release();
             // [REALCAMMI FORK BUGFIX] l_enhanced is channels.get(0) (set at the line above),
-            // already released by the loop just above — releasing it again here was a
-            // double-free of the same native Mat (undefined behaviour in OpenCV's native
-            // layer, can corrupt state for the *next* OpenCV call in the pipeline, e.g.
-            // applyOpenCVSharpen running right after this one).
+            // already released by the loop just above — do not release it again here (see
+            // original double-free bugfix note).
             lab_enhanced.release();
-            bgr_enhanced.release();
-            result_rgba.release();
+
+            return bgr_enhanced;
         } catch(Exception e) {
             if( MyDebug.LOG )
-                Log.e(TAG, "applyOpenCVCLAHE failed: " + e.getMessage());
+                Log.e(TAG, "applyOpenCVCLAHEMat failed: " + e.getMessage());
+            return bgr;
         }
-        return bitmap;
     }
 
     /** [REALCAMMI FORK] Compensates for the saturation loss caused by the Camera2
@@ -748,31 +796,52 @@ public class PostProcessing {
      *  Contrast Enhancement (CLAHE) is enabled — the TonemapCurve itself is always active,
      *  so the desaturation it causes is not an optional stylistic effect to be toggled, it's
      *  a correction for an unavoidable side-effect of the curve. This was previously bundled
-     *  inside applyOpenCVCLAHE() and only ran when that toggle was on; moved out so it applies
+     *  inside applyOpenCVCLAHEMat() and only ran when that toggle was on; moved out so it applies
      *  to every photo regardless.
-     *  boost = 1.02 + 0.180*L: a small +2% lift even in shadows, rising to +20% chroma in
-     *  highlights. (Formula history below, in case any of these needs revisiting again.)
+     *  boost = 0.95 + 0.13*L: a slight ~5% reduction even in shadows (where the TonemapCurve
+     *  barely desaturates), rising to a ~8% chroma boost in highlights, where the curve's
+     *  desaturation is strongest. (Formula history below, in case any of these needs
+     *  revisiting again.)
      *  [REALCAMMI FORK] Was 0.35 originally, but that was never tested on a real capture
      *  before this compensation became unconditional — first real-device test (2026-07-12)
      *  showed warm/orange surfaces (terracotta roof tiles) turning noticeably too yellow.
-     *  Dialed back to 0.125 (previously 0.15, retuned again after a second real-device pass).
-     *  [REALCAMMI FORK] Updated 2026-07-19: increased to 0.180 (was 0.125) plus a 1.02 base,
-     *  to bring more life to midtones without blowing out highlights - see the "UPDATED VALUES"
-     *  comment further down, right above the active Core.addWeighted() call, for the exact
-     *  current formula. Re-tune these two values (multiplier + base) if still too strong/weak.
+     *  Dialed back to 0.13 (previously 0.15, retuned again after a second real-device pass).
+     *  [REALCAMMI FORK PERFORMANCE 2026-07-28] Confirmed via on-device logcat profiling
+     *  (Ulefone Armor 25T Pro) to be the single largest cost in the whole postProcessBitmap()
+     *  pipeline - ~2223ms out of ~4310ms total on a 50MP (6144x8160) photo, more than every
+     *  other stage combined. This function only ever reads L and writes a/b (chroma) - it
+     *  never modifies L. Chroma is inherently low spatial-frequency information (the same
+     *  reasoning JPEG's own 4:2:0 subsampling relies on), so the boost is now computed and
+     *  applied on a downscaled copy of L/a/b, then the result is upscaled back before merging
+     *  with the untouched full-resolution L channel. This does NOT change the effect itself -
+     *  same Lab space, same formula, same tuning constants (see CHROMA_WORK_LONG_SIDE below) -
+     *  it only reduces the pixel count the per-channel arithmetic has to process. Measured
+     *  -597ms (~27%, 2223ms -> 1626ms) on-device. A later attempt (2026-07-29) to also remove
+     *  the two full-resolution BGR<->Lab conversions by reformulating this in RGB was tried
+     *  and reverted - it introduced a full-resolution 3-channel float buffer that ended up
+     *  costing more than the Lab conversions it removed (measured 4151ms, worse than this
+     *  version). Do not retry that approach without first fixing the full-res float step.
      */
+    // [REALCAMMI FORK PERFORMANCE] a/b (chroma) are processed at this capped working resolution
+    // then upscaled back - see rationale in the doc comment above. Deliberately more generous
+    // than DepthEffect's WORK_LONG_SIDE=1024 (chroma needs a bit more fidelity than a depth
+    // estimate), but still a large reduction from a 50MP (6144x8160) source.
+    private static final int CHROMA_WORK_LONG_SIDE = 1536;
+
     // Tune 10
-    private Bitmap applyTonemapDesaturationCompensation(Bitmap bitmap) {
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item A] Converted to operate directly on a BGR
+    // Mat (consumed and released, new Mat returned) instead of taking/returning a Bitmap and
+    // doing its own bitmapToMat/RGBA<->BGR/matToBitmap round trip. Called only from the
+    // consolidated OpenCV block in postProcessBitmap(). Same downscaled-chroma optimisation
+    // (CHROMA_WORK_LONG_SIDE), same Lab-space formula and tuning constants as before - only
+    // the entry/exit conversion (now BGR instead of RGBA, and no longer its own private
+    // bitmapToMat/matToBitmap) changed.
+    private Mat applyTonemapDesaturationCompensationMat(Mat bgr) {
         if( MyDebug.LOG )
-            Log.d(TAG, "applyTonemapDesaturationCompensation");
-        if( bitmap == null )
+            Log.d(TAG, "applyTonemapDesaturationCompensationMat");
+        if( bgr == null )
             return null;
         try {
-            Mat src = new Mat();
-            Utils.bitmapToMat(bitmap, src);
-
-            Mat bgr = new Mat();
-            Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR);
             Mat lab = new Mat();
             Imgproc.cvtColor(bgr, lab, Imgproc.COLOR_BGR2Lab);
 
@@ -780,25 +849,47 @@ public class PostProcessing {
             Core.split(lab, channels);
 
             Mat l_chan = channels.get(0);
-            Mat l_norm = new Mat();
-            l_chan.convertTo(l_norm, CvType.CV_32F, 1.0/255.0);
-            Mat boost = new Mat();
-            // boost = 1.0 + 0.125*l_norm: 1.0 in shadows (l_norm=0, no change), rising to 1.125
-            // in highlights (l_norm=1, +12.5% chroma) - see class doc comment above for history.
-            //Core.addWeighted(l_norm, 0.125, l_norm, 0, 1.0, boost);
-
-            // UPDATED VALUES: We increased the multiplier from 0.130 to 0.100 (an 10% gain instead of 12.5%).
-            // We also added a compensation base of 1.02 to bring life to the midtones without blowing out the highlights.
-            // alpha: controls how much saturation increases from the shadows to the highlights (the higher the value, the stronger it becomes in the bright areas).
-            // gamma: It's the minimum that remains even in the shadows (the part that never turns off, not even in the darkest point of the photo).
-            Core.addWeighted(l_norm, 0.100, l_norm, 0, 1.02, boost);
-
             Mat a_chan = channels.get(1);
             Mat b_chan = channels.get(2);
+
+            // [REALCAMMI FORK PERFORMANCE] downscale L/a/b for the boost calculation and the
+            // chroma adjustment - always resized (even to a same/larger size, a cheap no-op
+            // copy) rather than special-casing, to keep the Mat ownership/release logic below
+            // simple and leak-free.
+            int full_w = lab.cols();
+            int full_h = lab.rows();
+            int long_side = Math.max(full_w, full_h);
+            double scale = long_side > CHROMA_WORK_LONG_SIDE ? (double)CHROMA_WORK_LONG_SIDE / long_side : 1.0;
+            int small_w = Math.max(1, (int)Math.round(full_w * scale));
+            int small_h = Math.max(1, (int)Math.round(full_h * scale));
+            Size small_size = new Size(small_w, small_h);
+            Size full_size = new Size(full_w, full_h);
+
+            Mat l_small = new Mat();
+            Mat a_small = new Mat();
+            Mat b_small = new Mat();
+            Imgproc.resize(l_chan, l_small, small_size, 0, 0, Imgproc.INTER_AREA);
+            Imgproc.resize(a_chan, a_small, small_size, 0, 0, Imgproc.INTER_AREA);
+            Imgproc.resize(b_chan, b_small, small_size, 0, 0, Imgproc.INTER_AREA);
+            // full-resolution a/b are no longer needed - the boosted, upscaled versions
+            // (a_out/b_out below) replace them in the channels list before merging.
+            a_chan.release();
+            b_chan.release();
+
+            Mat l_norm = new Mat();
+            l_small.convertTo(l_norm, CvType.CV_32F, 1.0/255.0);
+            Mat boost = new Mat();
+
+            // CURRENT VALUES: multiplier (alpha) = 0.13, base (gamma) = 0.95 - see formula
+            // history in the doc comment above for how these were arrived at.
+            // alpha: controls how much saturation increases from the shadows to the highlights (the higher the value, the stronger it becomes in the bright areas).
+            // gamma: it's the minimum that remains even in the shadows (the part that never turns off, not even in the darkest point of the photo).
+            Core.addWeighted(l_norm, 0.13, l_norm, 0, 0.95, boost);
+
             Mat a_f = new Mat();
             Mat b_f = new Mat();
-            a_chan.convertTo(a_f, CvType.CV_32F);
-            b_chan.convertTo(b_f, CvType.CV_32F);
+            a_small.convertTo(a_f, CvType.CV_32F);
+            b_small.convertTo(b_f, CvType.CV_32F);
             Core.subtract(a_f, new org.opencv.core.Scalar(128.0), a_f);
             Core.subtract(b_f, new org.opencv.core.Scalar(128.0), b_f);
             Core.multiply(a_f, boost, a_f);
@@ -809,35 +900,47 @@ public class PostProcessing {
             Core.max(a_f, new org.opencv.core.Scalar(0.0), a_f);
             Core.min(b_f, new org.opencv.core.Scalar(255.0), b_f);
             Core.max(b_f, new org.opencv.core.Scalar(0.0), b_f);
-            a_f.convertTo(a_chan, CvType.CV_8U);
-            b_f.convertTo(b_chan, CvType.CV_8U);
-            channels.set(1, a_chan);
-            channels.set(2, b_chan);
+
+            Mat a_small_out = new Mat();
+            Mat b_small_out = new Mat();
+            a_f.convertTo(a_small_out, CvType.CV_8U);
+            b_f.convertTo(b_small_out, CvType.CV_8U);
+
+            // [REALCAMMI FORK PERFORMANCE] upscale the boosted chroma back to full resolution -
+            // INTER_LINEAR is the standard choice for chroma upsampling (same principle as
+            // 4:2:0 JPEG chroma reconstruction).
+            Mat a_out = new Mat();
+            Mat b_out = new Mat();
+            Imgproc.resize(a_small_out, a_out, full_size, 0, 0, Imgproc.INTER_LINEAR);
+            Imgproc.resize(b_small_out, b_out, full_size, 0, 0, Imgproc.INTER_LINEAR);
+            channels.set(1, a_out);
+            channels.set(2, b_out);
 
             Mat lab_out = new Mat();
             Core.merge(channels, lab_out);
             Mat bgr_out = new Mat();
             Imgproc.cvtColor(lab_out, bgr_out, Imgproc.COLOR_Lab2BGR);
-            Mat result_rgba = new Mat();
-            Imgproc.cvtColor(bgr_out, result_rgba, Imgproc.COLOR_BGR2RGBA);
-            Utils.matToBitmap(result_rgba, bitmap);
 
-            src.release();
             bgr.release();
             lab.release();
-            for(Mat ch : channels) ch.release();
+            for(Mat ch : channels) ch.release(); // releases l_chan, a_out, b_out
+            l_small.release();
+            a_small.release();
+            b_small.release();
             l_norm.release();
             boost.release();
             a_f.release();
             b_f.release();
+            a_small_out.release();
+            b_small_out.release();
             lab_out.release();
-            bgr_out.release();
-            result_rgba.release();
+
+            return bgr_out;
         } catch(Exception e) {
             if( MyDebug.LOG )
-                Log.e(TAG, "applyTonemapDesaturationCompensation failed: " + e.getMessage());
+                Log.e(TAG, "applyTonemapDesaturationCompensationMat failed: " + e.getMessage());
+            return bgr;
         }
-        return bitmap;
     }
 
 
@@ -1099,27 +1202,34 @@ public class PostProcessing {
     }
 
     // =====================================================================================
-    // FIXED HIGH-FIDELITY RENDERER CONSTANTS (Place at the top of the class definition)
+    // [REALCAMMI FORK] Color correction matrix used by applyColorCorrection() below.
+    // Retuned (values scaled down + saturation lowered - see setSaturation() below) after
+    // this function became too aggressive/garish once TonemapCurve image profiles were made
+    // available for photos - the profile's own curve plus this matrix were stacking. User-tuned,
+    // still being iterated on/re-tested - not a final calibration.
     // =====================================================================================
-    // STOCK PIPELINE OVERTAKE: The base matrix operates as a clean neutral identity pass (1.0).
-    // This stops double-stacking chromatic amplification, which was artificially inflating noise.
-    // Color space transformation and luminance preservation are cleanly delegated to the graphics engine.
+    // Standard Android ColorMatrix layout: each row is [R, G, B, A, offset], output_channel =
+    // R_in*col0 + G_in*col1 + B_in*col2 + A_in*col3 + offset. This is NOT an identity matrix:
+    // every channel is scaled down (13-15%) then lifted by a constant offset - a faded/lower-
+    // contrast look, which is then further desaturated by setSaturation() below.
     // Tune 2
     private static final float[] PRO_COLOR_MATRIX = new float[] {
-            0.870f,  0.000f,  0.000f,  0.000f,  16.000f, // RED Row: Gentle micro-boost (+2.5%) to shift the global white point toward warm sunlight
-            0.000f,  0.850f,  0.000f,  0.000f,  16.000f, // GREEN Row: Locked at neutral baseline to secure raw luminance integrity
-            0.000f,  0.000f,  0.870f,  0.000f,  12.000f, // BLUE Row: Compensates for the hardware blue cast (-10.5%) to naturally unveil gold tones
-            0.000f,  0.000f,  0.000f,  1.000f,  0.000f  // ALPHA Row: Standard alpha pipeline mapping channel configuration
+            0.870f,  0.000f,  0.000f,  0.000f,  16.000f, // RED Row:   0.870*R + 16 offset
+            0.000f,  0.850f,  0.000f,  0.000f,  16.000f, // GREEN Row: 0.850*G + 16 offset
+            0.000f,  0.000f,  0.870f,  0.000f,  12.000f, // BLUE Row:  0.870*B + 12 offset
+            0.000f,  0.000f,  0.000f,  1.000f,  0.000f  // ALPHA Row: unchanged
     };
 
     /**
      * [REALCAMMI FORK]
-     * Applies a defensive cinematic warmth transformation and sub-cast calibration.
-     * Eliminates artificial boosting and saturation clipping on 100% quality megapixel arrays.
+     * Applies PRO_COLOR_MATRIX (scale-down + offset-lift on R/G/B, see comment above) followed
+     * by a saturation reduction, via Android's ColorMatrixColorFilter drawn onto the bitmap's
+     * own Canvas. Retuned to be gentler after TonemapCurve image profiles were enabled for
+     * photos (see PRO_COLOR_MATRIX comment above).
      */
     private Bitmap applyColorCorrection(byte[] data, Bitmap bitmap) {
         if( MyDebug.LOG )
-            Log.d(TAG, "applyColorCorrection - Cinematic Warmth Balance Pipeline");
+            Log.d(TAG, "applyColorCorrection");
 
         if( data == null && bitmap == null ) {
             return null;
@@ -1133,8 +1243,6 @@ public class PostProcessing {
             }
         }
 
-        // International English: Strict allocation of the calibrated warm balance filter matrix.
-        // Removes the high-vibrancy concatenation layer to eliminate color distortion.
         ColorMatrix cm = new ColorMatrix(PRO_COLOR_MATRIX);
 
         ColorMatrix saturationBoost = new ColorMatrix();
@@ -1151,11 +1259,11 @@ public class PostProcessing {
         paint.setAntiAlias(true);
         paint.setColorFilter(new ColorMatrixColorFilter(cm));
 
-        // Inject warmth dynamically via channel shift directly into graphic memory
         canvas.drawBitmap(correctedBitmap, 0, 0, paint);
 
         return correctedBitmap;
     }
+
 
 
 
@@ -1228,13 +1336,7 @@ public class PostProcessing {
             }
         }
 
-        // [REALCAMMI FORK BUGFIX] Image Profile (Rec709/sRGB/Log/Gamma/S-Log3/JT curves) is
-        // applied here, on the captured photo bitmap, rather than live via TONEMAP_MODE - see
-        // setTonemapProfile() in Camera2Settings.java for why (confirmed AE darkening drift in
-        // photo mode with any profile active). Video mode still applies the profile live and
-        // correctly, so this must NOT run there too, or the curve would be applied twice to
-        // video snapshot photos.
-        // [REALCAMMI FORK] Image Profile (Rec709/sRGB/Log/Gamma/S-Log3/JT curves) applied here,
+        // [REALCAMMI FORK BUGFIX] Image Profile (Rec709/sRGB/Log/Gamma/S-Log3/JT curves) applied here,
         // on the captured photo bitmap, rather than live via TONEMAP_MODE - see setTonemapProfile()
         // in Camera2Settings.java for why (confirmed AE darkening drift in photo mode with any
         // profile active). applyImageProfile() decodes back to linear light before applying the
@@ -1266,56 +1368,90 @@ public class PostProcessing {
         // unavoidable side-effect, not an optional stylistic effect.
         // CLAHE fourth: improve local contrast on the final clean+sharp+corrected image
         // BlurDetect last: analyse the final image and warn user if blurry
+        // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item A] The five stages below (NR, baseline
+        // sharpen, optional sharpen, tonemap desaturation compensation, CLAHE) used to each do
+        // their own independent Bitmap<->Mat round trip (bitmapToMat/RGBA<->BGR/matToBitmap),
+        // even though they always run back-to-back with no other Bitmap-level work between
+        // them - up to 5x redundant colour-space conversions and Bitmap<->native memory copies
+        // on a single 50MP photo. Now a single bitmapToMat+RGBA2BGR happens once at the top of
+        // this block, the five stages are chained directly Mat->Mat (each *Mat method consumes
+        // and releases its input Mat, returning a new one), and a single BGR2RGBA+matToBitmap
+        // happens once at the end. Same order, same conditions, same tuning as before - only
+        // the conversion boundary moved. Baseline sharpen always runs unconditionally (see its
+        // doc comment), so this block - and therefore the single decode-if-null below - always
+        // executes regardless of which optional toggles are on, exactly as before.
+        if( bitmap == null ) {
+            bitmap = ImageUtils.loadBitmapWithRotation(data, true);
+        }
+        Mat consolidated_src = new Mat();
+        Utils.bitmapToMat(bitmap, consolidated_src);
+        Mat consolidated_bgr = new Mat();
+        Imgproc.cvtColor(consolidated_src, consolidated_bgr, Imgproc.COLOR_RGBA2BGR);
+        consolidated_src.release();
+
         if( main_activity.getApplicationInterface().getOpenCVNRPref() ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "applying OpenCV noise reduction");
-            if( bitmap == null ) {
-                bitmap = ImageUtils.loadBitmapWithRotation(data, true);
-            }
             // [REALCAMMI FORK] Piece 4 of AI scene detection: LOW_LIGHT gets STRONG NR instead
             // of the usual LIGHT default. All other categories (STANDARD/EXTREME_BACKLIT/INDOOR)
             // keep the previous hardcoded behaviour unchanged.
             NR_STRENGTH = ( main_activity.getPreview().getCameraController().getCurrentSceneCategory()
                     == SceneDetector.SceneCategory.LOW_LIGHT ) ? NR_STRENGTH_STRONG : NR_STRENGTH_LIGHT;
-            bitmap = applyOpenCVNR(bitmap);
+            consolidated_bgr = applyOpenCVNRMat(consolidated_bgr);
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after OpenCV NR: " + (System.currentTimeMillis() - time_s));
         }
+        // [REALCAMMI FORK] Always-on baseline sharpen (see applyBaselineSharpenMat() doc comment) -
+        // runs regardless of the "Sharpening (OpenCV)" toggle below, which now layers an optional
+        // extra boost on top of this permanent, subtle pass rather than being the only sharpening.
+        consolidated_bgr = applyBaselineSharpenMat(consolidated_bgr);
+        if( MyDebug.LOG )
+            Log.d(TAG, "Save single image performance: time after baseline sharpen: " + (System.currentTimeMillis() - time_s));
+
         if( main_activity.getApplicationInterface().getOpenCVSharpenPref() ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "applying OpenCV sharpening");
-            if( bitmap == null ) {
-                bitmap = ImageUtils.loadBitmapWithRotation(data, true);
-            }
             // [REALCAMMI FORK] Piece 4 of AI scene detection: INDOOR gets a modest sharpen
             // bump (helps text/fine-detail legibility indoors); everything else keeps default.
             sharpen_amount = ( main_activity.getPreview().getCameraController().getCurrentSceneCategory()
                     == SceneDetector.SceneCategory.INDOOR ) ? 0.65f : 0.5f;
-            bitmap = applyOpenCVSharpen(bitmap);
+            consolidated_bgr = applyOpenCVSharpenMat(consolidated_bgr);
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after OpenCV sharpen: " + (System.currentTimeMillis() - time_s));
         }
 
-        // [REALCAMMI FORK] see note in the block header above — runs here, unconditionally,
-        // regardless of the CLAHE toggle immediately below.
-        if( bitmap == null ) {
-            bitmap = ImageUtils.loadBitmapWithRotation(data, true);
-        }
-        bitmap = applyTonemapDesaturationCompensation(bitmap);
-        if( MyDebug.LOG ) {
-            Log.d(TAG, "Save single image performance: time after tonemap desaturation compensation: " + (System.currentTimeMillis() - time_s));
+        // [REALCAMMI FORK BUGFIX] Confirmed via on-device logcat profiling (2026-07-28, Ulefone
+        // Armor 25T Pro, 50MP capture) that this single pass was costing ~2223ms out of a 4310ms
+        // total postProcessBitmap+save time - by far the single largest contributor, more than
+        // everything else in the pipeline combined. It was running unconditionally even with NO
+        // Image Profile selected. But per Camera2Settings.java's setTonemapProfile() (see
+        // have_tonemap_profile), the HAL only receives a custom TonemapCurve when a profile is
+        // active in the first place - with no profile, there is no curve-induced desaturation to
+        // compensate for, so this was pure wasted work in that case (confirmed zero visual
+        // difference, since there was nothing for it to correct). For video, kept unconditional
+        // as before (live TONEMAP_MODE may still apply a curve there regardless of this check,
+        // and that path wasn't part of this investigation, so left untouched to avoid risk).
+        if( main_activity.getPreview().isVideo() || getResolvedImageProfileCurve() != null ) {
+            consolidated_bgr = applyTonemapDesaturationCompensationMat(consolidated_bgr);
+            if( MyDebug.LOG ) {
+                Log.d(TAG, "Save single image performance: time after tonemap desaturation compensation: " + (System.currentTimeMillis() - time_s));
+            }
         }
 
         if( main_activity.getApplicationInterface().getOpenCVCLAHEPref() ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "applying OpenCV CLAHE");
-            if( bitmap == null ) {
-                bitmap = ImageUtils.loadBitmapWithRotation(data, true);
-            }
-            bitmap = applyOpenCVCLAHE(bitmap);
+            consolidated_bgr = applyOpenCVCLAHEMat(consolidated_bgr);
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after OpenCV CLAHE: " + (System.currentTimeMillis() - time_s));
         }
+
+        Mat consolidated_rgba = new Mat();
+        Imgproc.cvtColor(consolidated_bgr, consolidated_rgba, Imgproc.COLOR_BGR2RGBA);
+        consolidated_bgr.release();
+        Utils.matToBitmap(consolidated_rgba, bitmap);
+        consolidated_rgba.release();
+
         if( main_activity.getApplicationInterface().getOpenCVBlurDetectPref() ) {
             if( MyDebug.LOG )
                 Log.d(TAG, "running OpenCV blur detection");
@@ -1335,9 +1471,15 @@ public class PostProcessing {
             if( bitmap == null ) {
                 bitmap = ImageUtils.loadBitmapWithRotation(data, true);
             }
-            DepthEffect depthEffect = null;
             try {
-                depthEffect = new DepthEffect(main_activity);
+                // [REALCAMMI FORK BUGFIX] reuse the singleton interpreter (see field doc
+                // comment above) instead of creating and immediately closing a new one here.
+                if( depthEffect == null )
+                    depthEffect = new DepthEffect(main_activity);
+                // [REALCAMMI FORK 2026-08-01] Apply the Settings-chosen strength preset
+                // (preference_depth_blur_strength) before this capture's blur - see
+                // DepthEffect.setStrengthPreset().
+                depthEffect.setStrengthPreset(main_activity.getApplicationInterface().getDepthBlurStrengthPref());
                 bitmap = depthEffect.apply(bitmap);
             }
             catch(Exception e) {
@@ -1345,14 +1487,21 @@ public class PostProcessing {
                 if( MyDebug.LOG )
                     Log.e(TAG, "depth blur failed: " + e.getMessage());
             }
-            finally {
-                if( depthEffect != null )
-                    depthEffect.close();
-            }
             if( MyDebug.LOG )
                 Log.d(TAG, "Save single image performance: time after depth blur: " + (System.currentTimeMillis() - time_s));
         }
 
         return new PostProcessBitmapResult(bitmap);
+    }
+
+    // [REALCAMMI FORK] Releases the singleton DepthEffect's TFLite interpreter, if one was
+    // ever created. Called once from ImageSaver.onDestroy() when the app is shutting down -
+    // not after every photo, since the whole point of the singleton above is to persist
+    // across photos for as long as this PostProcessing instance lives.
+    void close() {
+        if( depthEffect != null ) {
+            depthEffect.close();
+            depthEffect = null;
+        }
     }
 }

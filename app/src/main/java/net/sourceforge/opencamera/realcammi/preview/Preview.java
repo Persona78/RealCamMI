@@ -605,52 +605,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
      */
     // change 1
     private ArrayList<CameraController.Area> getAreas(float focus_x, float focus_y) {
-        // 1. DEFINITION OF THE VIRTUAL BASE SIZE
-        int focus_size = 80; // Balanced default value (4% of the 2,000-unit matrix)
-
-        try {
-            // Attempts to access Camera2 API features via the RealCamMI controller (Open Camera)
-            if (this.camera_controller instanceof CameraController2) {
-                CameraController2 cController2 = (CameraController2) this.camera_controller;
-                CameraCharacteristics characteristics = cController2.getCameraCharacteristics();
-
-                if (characteristics != null) {
-                    // Reads the actual size of the image sensor's active pixel array
-                    Rect activeArraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-
-                    if (activeArraySize != null) {
-                        int sensorWidth = activeArraySize.width();
-                        int sensorHeight = activeArraySize.height();
-                        long totalPixels = (long) sensorWidth * sensorHeight;
-
-                        // 2. DYNAMIC ADJUSTMENT BASED ON MEGAPIXELS (Pro Level)
-                        // If the sensor exceeds 16 megapixels, we reduce the square
-                        // to maintain surgical focus precision on the subject.
-                        if (totalPixels > 48000000L) {
-                            // Ultra-High Res Sensors (48MP, 64MP, and higer) -> Ultra-fine focus
-                            focus_size = 50;
-                        } else if (totalPixels > 16000000L) {
-                            // Medium-High Resolution Sensors (16MP, 20MP) -> Mid-range focus
-                            focus_size = 65;
-                        } else if (totalPixels > 12000000L) {
-                            // Low-Medium Resolution Sensors (12MP) -> low-range focus
-                            focus_size = 70;
-                        }
-
-
-                        if (MyDebug.LOG) {
-                            Log.d(TAG, "Sensor Detected: " + (totalPixels / 1000000) + "MP (" + sensorWidth + "x" + sensorHeight + ") -> Adjusted focus_size to: " + focus_size);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // Safeguard: If it fails or the device uses the Camera1 API, safely fall back to the default.
-            if (MyDebug.LOG) {
-                Log.e(TAG, "Unable to read sensor properties. Using default size.", e);
-            }
-            focus_size = 80;
-        }
+        int focus_size = 50;
 
         if (MyDebug.LOG) {
             Log.d(TAG, "Pro Focus - Input x,y: " + focus_x + ", " + focus_y + " | Final Size: " + focus_size);
@@ -7858,7 +7813,7 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
      */
     public boolean supportsCameraExtension(int extension) {
         if( extension == CameraExtensionCharacteristics.EXTENSION_HDR
-                && !( camera_controller instanceof CameraController2 && ((CameraController2) camera_controller).isTrustedVendorExtensionDevice() ) ) {
+                && !( camera_controller instanceof CameraController2 )) {
             // [REALCAMMI FORK] Only allow EXTENSION_HDR on devices we've specifically vetted
             // (Xiaomi/Ulefone). Previously blocked unconditionally: had no effect on Galaxy S10e,
             // not available on Pixel 6 Pro or Galaxy S24+, and never actually tested elsewhere.

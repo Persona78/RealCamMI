@@ -583,8 +583,17 @@
         <item>@string/preference_video_profile_gamma_2_6</item>
         <item>@string/preference_video_profile_gamma_2_8</item>
     </string-array>
+    <!-- [REALCAMMI FORK BUGFIX 2026-08-01] This array used to start with an extra "0.0" item
+         that had no corresponding label in preference_video_profile_gamma_entries (10 entries
+         vs 11 values). That silently shifted every entries[i]/values[i] pairing by one position
+         in the ListPreference (e.g. picking "2.4" actually persisted "2.3", and "2.8" was never
+         reachable), and made ArraySeekBarPreference throw IllegalStateException on open (it
+         requires entries.length == values.length). The "0.0" sentinel is still used internally
+         in Camera2Settings.setTonemapProfile() (gamma_profile == 0.0f disables the gamma tonemap),
+         but it is not meant to be a user-selectable entry here - the XML default is "2.3" and the
+         code fallback (MyApplicationInterface.getVideoProfileGamma()) is "2.4", neither of which
+         is "0.0". Removed to restore 10-to-10 alignment. -->
     <string-array name="preference_video_profile_gamma_values">
-        <item>0.0</item>
         <item>1.6</item>
         <item>1.8</item>
         <item>1.9</item>
@@ -595,6 +604,22 @@
         <item>2.4</item>
         <item>2.6</item>
         <item>2.8</item>
+    </string-array>
+    <!-- [REALCAMMI FORK 2026-08-01] Depth Effect (bokeh) strength presets - see
+         DepthEffect.setStrengthPreset(). Only "natural" is the on-device confirmed baseline
+         (MAX_BLUR_SIGMA=6.0f, FALLOFF_SHARPNESS=1.25f from 2026-07-21); the other presets are
+         proportional engineering estimates and have NOT been validated on-device yet. -->
+    <string-array name="preference_depth_blur_strength_entries">
+        <item>@string/preference_depth_blur_strength_subtle</item>
+        <item>@string/preference_depth_blur_strength_natural</item>
+        <item>@string/preference_depth_blur_strength_strong</item>
+        <item>@string/preference_depth_blur_strength_very_strong</item>
+    </string-array>
+    <string-array name="preference_depth_blur_strength_values">
+        <item>subtle</item>
+        <item>natural</item>
+        <item>strong</item>
+        <item>very_strong</item>
     </string-array>
     <string-array name="preference_record_audio_src_entries">
         <item>@string/preference_record_audio_src_camcorder</item>

@@ -78,14 +78,22 @@ public class DepthEffect {
     // phone-camera bokeh (small sensor, ~24mm-equivalent focal length) is naturally much
     // subtler than a dedicated portrait lens; a large value here is what makes computational
     // bokeh look fake. Start conservative and only raise it after seeing a real result.
-    private static final float MAX_BLUR_SIGMA = 6.0f;
+    private static final float DEFAULT_MAX_BLUR_SIGMA = 6.0f;
 
     // [REALCAMMI FORK TUNE] Controls how quickly blur saturates with distance from the focal
     // plane. Higher = blur ramps up faster and plateaus sooner (more separation, closer to a
     // wide-aperture look); lower = more gradual, deeper apparent depth of field. This is the
     // single most important value to adjust after seeing a real photo - see the saturating
     // curve in apply() below.
-    private static final float FALLOFF_SHARPNESS = 1.25f;
+    private static final float DEFAULT_FALLOFF_SHARPNESS = 1.25f;
+
+    // [REALCAMMI FORK 2026-08-01] Instance fields (no longer static final) so the Settings
+    // "Depth Effect Strength" preset (see setStrengthPreset()) can adjust them per capture,
+    // set by PostProcessing.java before calling apply(). Defaults are the 2026-07-21 on-device
+    // confirmed baseline ("natural" preset) - unchanged behaviour if setStrengthPreset() is
+    // never called.
+    private float maxBlurSigma = DEFAULT_MAX_BLUR_SIGMA;
+    private float falloffSharpness = DEFAULT_FALLOFF_SHARPNESS;
 
     private final Interpreter interpreter;
 
@@ -104,6 +112,37 @@ public class DepthEffect {
     public void close() {
         if( interpreter != null )
             interpreter.close();
+    }
+
+    /** Sets the blur strength preset chosen in Settings (preference_depth_blur_strength),
+     *  before the next call to apply(). Unknown/null keys fall back to "natural" (the
+     *  on-device confirmed baseline). [REALCAMMI FORK 2026-08-01]
+     *  NOTE: only "natural" (DEFAULT_MAX_BLUR_SIGMA/DEFAULT_FALLOFF_SHARPNESS) has been
+     *  confirmed on-device (2026-07-21). "subtle"/"strong"/"very_strong" are proportional
+     *  engineering estimates and still need on-device validation before being trusted.
+     */
+    public void setStrengthPreset(String preset) {
+        if( preset == null )
+            preset = "natural";
+        switch( preset ) {
+            case "subtle":
+                maxBlurSigma = 4.0f;
+                falloffSharpness = 1.6f;
+                break;
+            case "strong":
+                maxBlurSigma = 8.0f;
+                falloffSharpness = 1.0f;
+                break;
+            case "very_strong":
+                maxBlurSigma = 10.0f;
+                falloffSharpness = 0.8f;
+                break;
+            case "natural":
+            default:
+                maxBlurSigma = DEFAULT_MAX_BLUR_SIGMA;
+                falloffSharpness = DEFAULT_FALLOFF_SHARPNESS;
+                break;
+        }
     }
 
     /** Runs MiDaS on a downscaled copy of [bitmap] and returns a MODEL_INPUT_SIZE x
@@ -203,11 +242,11 @@ public class DepthEffect {
 
             // --- Per-pixel blur weight in [0,1]: 0 = sharp (at focus), 1 = max background
             // blur. Saturating curve (1 - exp(-k*delta)) - ramps up smoothly then plateaus,
-            // rather than growing without bound (see FALLOFF_SHARPNESS above). ---
+            // rather than growing without bound (see DEFAULT_FALLOFF_SHARPNESS above). ---
             delta = new Mat();
             Core.absdiff(depthRefined, new Scalar(focusDepth), delta);
             weight = new Mat();
-            Core.multiply(delta, new Scalar(-FALLOFF_SHARPNESS), weight);
+            Core.multiply(delta, new Scalar(-falloffSharpness), weight);
             Core.exp(weight, weight);
             Mat ones = Mat.ones(weight.size(), weight.type());
             Core.subtract(ones, weight, weight);
@@ -229,8 +268,8 @@ public class DepthEffect {
             Utils.bitmapToMat(workBitmap, workRgb);
             Imgproc.cvtColor(workRgb, workRgb, Imgproc.COLOR_RGBA2RGB);
             blurredSmall = new Mat();
-            int ksize = ((int)(MAX_BLUR_SIGMA * 3) | 1);
-            Imgproc.GaussianBlur(workRgb, blurredSmall, new Size(ksize, ksize), MAX_BLUR_SIGMA);
+            int ksize = ((int)(maxBlurSigma * 3) | 1);
+            Imgproc.GaussianBlur(workRgb, blurredSmall, new Size(ksize, ksize), maxBlurSigma);
             workRgb.release();
             blurredFull = new Mat();
             Imgproc.resize(blurredSmall, blurredFull, new Size(fullW, fullH), 0, 0, Imgproc.INTER_LINEAR);

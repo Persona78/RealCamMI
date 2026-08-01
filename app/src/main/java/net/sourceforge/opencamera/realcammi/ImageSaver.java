@@ -1,6 +1,7 @@
 package net.sourceforge.opencamera.realcammi;
 
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
+import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController2;
 import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
 
 import java.io.ByteArrayOutputStream;
@@ -537,6 +538,9 @@ public class ImageSaver extends Thread {
         if( hdrProcessor != null ) {
             hdrProcessor.onDestroy();
         }
+        // [REALCAMMI FORK] release the singleton DepthEffect's TFLite interpreter, if one was
+        // ever created (see PostProcessing.close() / the lazy-init in postProcessBitmap())
+        postProcessing.close();
     }
 
     @Override
@@ -1945,6 +1949,20 @@ public class ImageSaver extends Thread {
         ContentValues contentValues = null; // used if using scoped storage
         try {
             if( !raw_only ) {
+                // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item B] If the software zoom-crop
+                // workaround in CameraController2.onImageAvailable() already decoded and cropped
+                // this exact JPEG (cached keyed by the exact "data" array reference - see
+                // CameraController2.LastCroppedBitmapCache), reuse that bitmap here instead of
+                // letting postProcessBitmap() decode "data" from scratch a second time. Only
+                // used if bitmap is null (i.e. nothing upstream already supplied a decoded
+                // bitmap) and the reference matches exactly; any mismatch (e.g. burst mode, or
+                // any path that doesn't go through that exact crop block) falls back to the
+                // normal decode-from-data behaviour, unchanged.
+                if( bitmap == null ) {
+                    bitmap = CameraController2.LastCroppedBitmapCache.takeIfMatches(data);
+                    if( MyDebug.LOG && bitmap != null )
+                        Log.d(TAG, "reusing cached cropped bitmap instead of re-decoding JPEG");
+                }
                 PostProcessing.PostProcessBitmapResult postProcessBitmapResult = postProcessing.postProcessBitmap(request, data, bitmap, ignore_exif_orientation);
                 bitmap = postProcessBitmapResult.bitmap;
             }

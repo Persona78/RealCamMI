@@ -1972,6 +1972,12 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
         this.mainUI.getOnScreenIcons().clickedOpenCVBlurDetect();
     }
 
+    public void clickedDepthBlur(View view) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "clickedDepthBlur");
+        this.mainUI.getOnScreenIcons().clickedDepthBlur();
+    }
+
     public void clickedCycleFlash(View view) {
         if( MyDebug.LOG )
             Log.d(TAG, "clickedCycleFlash");

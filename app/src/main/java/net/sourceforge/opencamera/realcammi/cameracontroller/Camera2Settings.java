@@ -202,6 +202,21 @@ public class Camera2Settings {
     // Tune 4
     @RequiresApi(api = Build.VERSION_CODES.R)
     void setupBuilder(CaptureRequest.Builder builder, boolean is_still) {
+
+        // [REALCAMMI FORK] Removed: a hardcoded CONTROL_AE_TARGET_FPS_RANGE=[15,30] override used to be
+        // forced here unconditionally. Removed because it contradicts this project's own documented
+        // Camera2 lesson (see Preview.java, setPreviewFpsRange() call site, ~line 5040-5088): forcing an
+        // explicit fps range on Camera2 previously caused a dark-preview regression (OnePlus 3T) and
+        // problems combining manual mode with video, which is why upstream deliberately leaves the fps
+        // range unset for "default" photo/video and lets the HAL choose freely. The app's own intentional
+        // fps preference (video FPS setting, slow-motion, etc.) is still applied correctly via
+        // ae_target_fps_range in setAEMode() below, when the user has actually requested one.
+
+        /*if( !camera_controller.isExtensionSession() ) {
+            // Tell the camera to cancel/idle the focus trigger (matches upstream behavior)
+            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+        }*/
+
         // [REALCAMMI FORK] Backlit safety net: when the AI scene detector flags EXTREME_BACKLIT
         // and Auto HDR either isn't enabled or isn't available on this device (no EXTENSION_HDR
         // support), the HAL's normal AE would otherwise expose for the shadows and blow out the
@@ -215,34 +230,24 @@ public class Camera2Settings {
             builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -2);
         }
 
-        if (!camera_controller.isExtensionSession()) {
-            // Starting image enhancement process
-            // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
-            Range<Integer> selectedFpsRange = new Range<>(15, 30); // Professional safe fallback for maximum device compatibility
-
-            if (characteristics != null) {
-                Range<Integer>[] availableRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-
-                if (availableRanges != null) {
-                    for (Range<Integer> range : availableRanges) {
-                        // Locate the standard professional range allowing exposure expansion down to 15 FPS
-                        if (range.getLower() <= 15 && range.getUpper() >= 30) {
-                            selectedFpsRange = range;
-                            break;
-                        }
+        // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
+        // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
+        // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
+        // own pipeline, showing up as a visible color blotch in a corner of the photo.
+        int optimalShadingMode = CameraMetadata.SHADING_MODE_FAST; // Standard safe fallback for all devices
+        if (characteristics != null) {
+            int[] availableShadingModes = characteristics.get(CameraCharacteristics.SHADING_AVAILABLE_MODES);
+            if (availableShadingModes != null) {
+                for (int mode : availableShadingModes) {
+                    // Prioritize high-quality algorithmic processing to ensure uniform illumination across the image frame
+                    if (mode == CameraMetadata.SHADING_MODE_HIGH_QUALITY) {
+                        optimalShadingMode = mode;
+                        break;
                     }
                 }
             }
-
-            // Applies the selected FPS range to the capture builder.
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, selectedFpsRange);
         }
-
-        if( !camera_controller.isExtensionSession() ) {
-            // [REALCAMMI FORK] Disabled vs upstream (upstream always sets CONTROL_AF_TRIGGER_IDLE here).
-            // Tell the camera to cancel/idle the focus trigger
-            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
-        }
+        builder.set(CaptureRequest.SHADING_MODE, optimalShadingMode);
 
         setSceneMode(builder);
         setColorEffect(builder);
@@ -273,7 +278,7 @@ public class Camera2Settings {
             builder.set(CaptureRequest.JPEG_QUALITY, jpeg_quality);
         }
 
-        setEdgeMode(builder);
+        setEdgeMode(builder, is_still);
         setNoiseReductionMode(builder);
         // [REALCAMMI FORK BUGFIX] setTonemapProfile() moved to run AFTER setEdgeMode()/
         // setNoiseReductionMode() (was called right after setStabilization(), before the is_still
@@ -411,28 +416,32 @@ public class Camera2Settings {
     }
 
     // =====================================================================================
-    // HIGH-RESOLUTION CINEMATIC HARDWARE CONSTANTS (Place at the top of the class)
+    // [REALCAMMI FORK] Manual white balance / color correction constants, applied via
+    // COLOR_CORRECTION_GAINS/TRANSFORM below when AWB is OFF or during a vendor Extension
+    // session (see setWhiteBalance()). User-tuned, still being iterated on/re-tested -
+    // not a final calibration.
     // =====================================================================================
-    // SUPERIORITY PROFILE: Validated structural array containing exactly 9 Rational instances.
-    // Calibrated using high-definition Rec. 2020 native color space transformations for sensor-level tuning.
-    // Main diagonal handles professional micro-contrast amplification (+8% Red, +5% Green, +6% Blue).
-    // Horizontally balanced to sum exactly 100/100 (1.0) per row to lock absolute white point stability,
-    // preserving micro-textures under low-light LED conditions, and neutralizing high-frequency chroma noise.
+    // 3x3 color correction matrix (CCM), passed to the Camera2 API as a COLOR_CORRECTION_TRANSFORM.
+    // Each row sums to Rational(100,100) = 1.0, so overall channel energy/white point is
+    // preserved. Near-identity with small cross-channel terms: RED = 98% of its own signal +
+    // 2% bled in from BLUE; GREEN = 98% of its own signal + 2% bled in from RED; BLUE passes
+    // through unchanged (100%, no cross-channel term).
     // Tune 1
     private static final Rational[] REALCAMMI_MATRIX_ELEMENTS = new Rational[] {
-            new Rational(106, 100), new Rational(-4, 100),  new Rational(-2, 100), // RED Row   (106 - 3 - 2 = 101)
-            new Rational(-3, 100),  new Rational(106, 100), new Rational(-2, 100), // GREEN Row (-3 + 105 - 2 = 100)
-            new Rational(-1, 100),  new Rational(-5, 100),  new Rational(106, 100) // BLUE Row  (-1 - 5 + 106 = 100)
+            new Rational(101, 100), new Rational(-1, 100),  new Rational(0, 100), // RED Row   (101 - 1 + 0 = 100)
+            new Rational(0, 100),  new Rational(101, 100), new Rational(-1, 100), // GREEN Row (0 + 101 - 1 = 100)
+            new Rational(-1, 100),  new Rational(0, 100),  new Rational(101, 100) // BLUE Row  (-1 + 0 + 101 = 100)
     };
     private static final ColorSpaceTransform REALCAMMI_COLOR_TRANSFORM = new ColorSpaceTransform(REALCAMMI_MATRIX_ELEMENTS);
 
-    // =====================================================================================
-    // COMPLETE SUPERIOR WHITE BALANCE & ISP PIPELINE METHOD (Direct Replacement)
-    // =====================================================================================
     /**
-     * Configures advanced hardware parameters, overrides standard vendor limitations,
-     * and forces high-fidelity color transform algorithms onto the physical Image Signal Processor.
-     * Fully optimized to interlock with vendor Extension Sessions (e.g., Xiaomi Native Night Mode).
+     * Sets CONTROL_AWB_MODE on the capture request. When white balance is manual
+     * (AWB_MODE_OFF) or the current session is a vendor Camera2 Extension session (e.g.
+     * Xiaomi's native Night Mode), also applies this fork's manual COLOR_CORRECTION_GAINS
+     * and COLOR_CORRECTION_TRANSFORM (see REALCAMMI_MATRIX_ELEMENTS/saturationFactor below) -
+     * under AWB_MODE=AUTO the Camera2 API spec has the HAL ignore those fields (see the
+     * AWB inversion bugfix note elsewhere in this file), so this only has an effect in those
+     * two cases.
      *
      * @param builder The active CaptureRequest.Builder instance for the camera pipeline.
      * @return boolean True if any hardware request keys were altered, false otherwise.
@@ -440,8 +449,9 @@ public class Camera2Settings {
     boolean setWhiteBalance(CaptureRequest.Builder builder) {
         boolean changed = false;
 
-        // VENDOR EXTENSION SESSION PATCH: Instead of fully bypassing, we allow safely bounded execution
-        // of color matrices and high-quality edge detection parameters during hardware-driven Night Mode operations.
+        // Extension sessions (e.g. vendor Night Mode) also don't run the normal AWB=AUTO
+        // pipeline, so the manual gains/CCM below need to apply there too, not just when the
+        // user explicitly selected manual white balance.
         boolean isExtension = (camera_controller != null && camera_controller.isExtensionSession());
 
         if ( builder.get(CaptureRequest.CONTROL_AWB_MODE) == null || builder.get(CaptureRequest.CONTROL_AWB_MODE) != white_balance ) {
@@ -454,25 +464,28 @@ public class Camera2Settings {
                 has_default_color_correction = false;
             }
 
-            // Fallback injection to secure exposure tracking in multi-frame computation nodes
             builder.set(CaptureRequest.CONTROL_AWB_MODE, white_balance);
             changed = true;
         }
 
-        // Apply advanced chromatic rendering profiles for both pure manual state and night scene overrides
+        // Apply the manual gains/CCM below both when the user selected manual white balance
+        // and during a vendor Extension session (Night Mode) - see isExtension comment above.
         if ( white_balance == CameraMetadata.CONTROL_AWB_MODE_OFF || isExtension ) {
-            if( MyDebug.LOG ) Log.d(TAG, "Injecting high-fidelity studio-grade registers into ISP pipeline. Night mode active: " + isExtension);
+            if( MyDebug.LOG ) Log.d(TAG, "applying manual color correction gains/transform. Extension session: " + isExtension);
 
             if( !has_default_color_correction ) {
                 has_default_color_correction = true;
                 default_color_correction = builder.get(CaptureRequest.COLOR_CORRECTION_MODE);
             }
 
-            // 1. EXTRACT NATIVE KELVIN TEMPERATURE GAIN VECTORS FROM CORE ENGINE
+            // Converts the configured white_balance_temperature (Kelvin) to an RGGB channel
+            // gain vector.
             RggbChannelVector temperatureVector = CameraController2.convertTemperatureToRggbVector(white_balance_temperature);
 
-            // 2. HARDWARE ANTI-CLIPPING & EXPOSURE INTEGRITY SHIELD
-            float saturationFactor = 1.15f;
+            // Scales the temperature-derived gains by saturationFactor, then clamps each
+            // channel to [1.0, 4.0] - the typical valid COLOR_CORRECTION_GAINS range on most
+            // devices - so an out-of-range gain is never sent to the HAL.
+            float saturationFactor = 1.35f;
             float finalRed = Math.min(Math.max(temperatureVector.getRed() * saturationFactor, 1.0f), 4.0f);
             float finalGe = Math.min(Math.max(temperatureVector.getGreenEven() * saturationFactor, 1.0f), 4.0f);
             float finalGo = Math.min(Math.max(temperatureVector.getGreenOdd() * saturationFactor, 1.0f), 4.0f);
@@ -480,19 +493,30 @@ public class Camera2Settings {
 
             RggbChannelVector combinedGains = new RggbChannelVector(finalRed, finalGe, finalGo, finalBlue);
 
-            // 3. FORCE PREMIUM HARDWARE OVERRIDES FOR MAXIMUM DEFINITION
+            // Switches COLOR_CORRECTION_MODE to TRANSFORM_MATRIX and applies the manual
+            // gains/CCM computed above.
             builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
             builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, combinedGains);
             builder.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, REALCAMMI_COLOR_TRANSFORM);
 
-            // Force high-quality edge enhancement to preserve raw wood and plastic grains over vendor smearing
-            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
+            int optimalAberrationMode = CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_FAST; // Standard safe fallback
+            if (characteristics != null) {
+                int[] availableAberrationModes = characteristics.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES);
+                if (availableAberrationModes != null) {
+                    for (int mode : availableAberrationModes) {
+                        // Prioritize high-quality processing engine to correct color fringing along object boundaries
+                        if (mode == CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY) {
+                            optimalAberrationMode = mode;
+                            break;
+                        }
+                    }
+                }
+            }
+            builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, optimalAberrationMode);
 
-            // Commits hardware noise reduction to maintain structured analog grain over muddy stock blurs
-            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
-
-            // Correct lens chromatic aberrations inside multi-exposure fusion environments
-            builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+            // [REALCAMMI FORK] Removed: a second, redundant copy of the same hardcoded
+            // CONTROL_AE_TARGET_FPS_RANGE=[15,30] override used to be forced here too (see the note in
+            // setupBuilder() above for why this whole idea was removed).
 
             changed = true;
         }
@@ -516,7 +540,7 @@ public class Camera2Settings {
         return changed;
     }
 
-    boolean setEdgeMode(CaptureRequest.Builder builder) {
+    boolean setEdgeMode(CaptureRequest.Builder builder, boolean is_still) {
         if( MyDebug.LOG ) {
             Log.d(TAG, "setEdgeMode");
             Log.d(TAG, "has_default_edge_mode: " + has_default_edge_mode);
@@ -564,19 +588,27 @@ public class Camera2Settings {
             builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
         }
 
-        else if( is_xiaomi ) {
-            if( MyDebug.LOG )
-                Log.d(TAG, "set EDGE_MODE_OFF (xiaomi)");
-            // [REALCAMMI FORK] Confirmed empirically by the user: on Xiaomi (garnet),
-            // EDGE_MODE_HIGH_QUALITY produces better image quality than FAST/OFF. Forced
-            // explicitly instead of leaving it to the still-capture template default
-            // (opaque, CamX-build-dependent behavior).
-            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
-        }
-
         else if( has_default_edge_mode ) {
             if( builder.get(CaptureRequest.EDGE_MODE) != null && !builder.get(CaptureRequest.EDGE_MODE).equals(default_edge_mode) ) {
                 builder.set(CaptureRequest.EDGE_MODE, default_edge_mode);
+                changed = true;
+            }
+        }
+
+        else {
+            // [REALCAMMI FORK] Generalized (not device-gated) default for anyone who hasn't set their
+            // own sharpening preference: EDGE_MODE_FAST on preview (per the official Camera2 docs,
+            // FAST specifically never slows down the capture rate, so there's no downside on any
+            // device) and EDGE_MODE_HIGH_QUALITY only for the still capture itself (HIGH_QUALITY may
+            // slow down capture, which is fine to pay once for the actual photo, not on every
+            // preview frame). Originally only forced for Xiaomi based on empirical testing there;
+            // there's no reason the same quality benefit for stills, or the preview-side FAST
+            // guarantee, shouldn't generalize to other devices too.
+            int desired_edge_mode = is_still ? CaptureRequest.EDGE_MODE_HIGH_QUALITY : CaptureRequest.EDGE_MODE_FAST;
+            if( builder.get(CaptureRequest.EDGE_MODE) == null || !builder.get(CaptureRequest.EDGE_MODE).equals(desired_edge_mode) ) {
+                if( MyDebug.LOG )
+                    Log.d(TAG, "set edge_mode: " + desired_edge_mode + " (is_still? " + is_still + ")");
+                builder.set(CaptureRequest.EDGE_MODE, desired_edge_mode);
                 changed = true;
             }
         }
@@ -623,12 +655,12 @@ public class Camera2Settings {
 
         else if( is_ulefone || is_xiaomi ) {
             if( MyDebug.LOG )
-                Log.d(TAG, "set NOISE_REDUCTION_MODE_MINIMAL (xiaomi)");
-            // [REALCAMMI FORK] `is_xiaomi` was calculated but never actually used here — the CamX HAL
-            // would default to the still-capture template (potentially HIGH_QUALITY),
-            // stacking with the app's bilateral NR. MINIMAL retains hot-pixel correction
-            // (relevant for the 200MP HP3 sensor at high ISO) and leaves all luminance/chroma
-            // smoothing to the bilateral filter tunable in PostProcessing.java.
+                Log.d(TAG, "set NOISE_REDUCTION_MODE_MINIMAL (xiaomi/ulefone)");
+            // [REALCAMMI FORK] Without this, the CamX HAL would default to whatever the still-capture
+            // template picks (potentially HIGH_QUALITY), stacking with the app's own bilateral NR.
+            // MINIMAL retains hot-pixel correction (relevant for the 200MP HP3 sensor at high ISO)
+            // and leaves all luminance/chroma smoothing to the bilateral filter tunable in
+            // PostProcessing.java.
             builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL);
         }
 

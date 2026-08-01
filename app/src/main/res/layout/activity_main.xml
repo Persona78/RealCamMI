@@ -447,6 +447,21 @@
         />
 
     <ImageButton
+        android:id="@+id/depth_blur"
+        android:layout_width="@dimen/onscreen_button_size"
+        android:layout_height="@dimen/onscreen_button_size"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/depth_blur_enable"
+        app:srcCompat="@drawable/ic_depth_effect_white_48dp"
+        android:background="@color/icons_background"
+        android:backgroundTint="@color/icons_background_tint"
+        android:backgroundTintMode="src_in"
+        android:onClick="clickedDepthBlur"
+        android:visibility="gone"
+        />
+
+    <ImageButton
         android:id="@+id/cycle_flash"
         android:layout_width="@dimen/onscreen_button_size"
         android:layout_height="@dimen/onscreen_button_size"

@@ -32,12 +32,24 @@
         android:defaultValue="false"
         />
 		
-	<CheckBoxPreference
+	<!-- CheckBoxPreference
         android:key="preference_depth_blur"
         android:title="@string/preference_depth_blur"
         android:summary="@string/preference_depth_blur_summary"
         android:defaultValue="false"
-        />	
+        /  -->	
+
+    <!-- [REALCAMMI FORK 2026-08-01] Depth Effect strength, chosen before shooting (Option A -
+         settings-based preset, no live on-screen preview - see DepthEffect.setStrengthPreset()
+         and PostProcessing.java's depth-blur call site). -->
+    <net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference
+        android:key="preference_depth_blur_strength"
+        android:title="@string/preference_depth_blur_strength"
+        android:summary="@string/preference_depth_blur_strength_summary"
+        android:entries="@array/preference_depth_blur_strength_entries"
+        android:entryValues="@array/preference_depth_blur_strength_values"
+        android:defaultValue="natural"
+        />
 
     <ListPreference
         android:key="preference_save_preshots"
@@ -141,18 +153,22 @@
         android:summary="@string/preference_video_log_summary"
         android:entries="@array/preference_video_log_entries"
         android:entryValues="@array/preference_video_log_values"
-        android:defaultValue="rec709"
+        android:defaultValue="off"
         />
 
     <!--  if we move this to another PreferenceGroup, we should update code for the findPreference() call -->
-    <!-- net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference -->
-	 <ListPreference
+    <!-- [REALCAMMI FORK 2026-08-01] Restored as ArraySeekBarPreference (was temporarily reverted
+         to ListPreference on 2026-08-01 because the entries/values arrays had mismatched lengths,
+         which made ArraySeekBarPreference throw IllegalStateException on open - see the bugfix
+         comment on preference_video_profile_gamma_values in arrays.xml. Safe to use again now
+         that the arrays are aligned 10-to-10. -->
+    <net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference
         android:key="preference_video_profile_gamma"
         android:title="@string/preference_video_profile_gamma"
         android:summary="@string/preference_video_profile_gamma_summary"
         android:entries="@array/preference_video_profile_gamma_entries"
         android:entryValues="@array/preference_video_profile_gamma_values"
-        android:defaultValue="2.2"
+        android:defaultValue="2.4"
         />
 
 

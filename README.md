@@ -115,7 +115,7 @@ A lightweight on-device scene classifier, independent from Auto HDR, active when
 
 | Category | Detection method | Effect |
 |---|---|---|
-| **EXTREME_BACKLIT** | Luminance histogram (large dark + large bright fraction at once) | Can trigger Auto HDR (see section 7), if that is also enabled |
+| **EXTREME_BACKLIT** | Luminance histogram (large dark + large bright fraction at once) | Can trigger Auto HDR (see section 7), if that is also enabled. Also applies a mild -2 EV exposure bias in `Camera2Settings.setupBuilder()`, but only when Auto HDR is unavailable/off for that shot, ISO/exposure aren't under manual control, and no extension session is already active — a safety net against blown-out skies/highlights when the HAL's normal AE would otherwise expose for the shadows. |
 | **LOW_LIGHT** | Metered ISO/exposure time at the moment of analysis | Raises noise-reduction strength to STRONG for the photo |
 | **INDOOR** | MLKit Image Labeling | Raises sharpening amount to 0.65 (from the 0.5 default) |
 | **STANDARD** | None of the above | No adjustment |
@@ -134,20 +134,33 @@ Activated via a dedicated toolbar button (tap to toggle; red = active). Visible 
 
 **Bugfix (2026-07-17):** the manual-white-balance code path in `Camera2Settings.setWhiteBalance()` had its condition inverted — it checked `CONTROL_AWB_MODE_AUTO` instead of `CONTROL_AWB_MODE_OFF`, meaning the manual colour-correction-matrix/gains override ran every time AWB was in its default AUTO state instead of only when the user picked a manual white-balance temperature. This was invisible on Garnet (where, per the platform behaviour above, those fields are ignored under AWB AUTO regardless), but caused a visible green/negative colour cast on Ulefone Armor 25T under AWB AUTO in low light, since its HAL does not ignore them. Fixed by correcting the condition.
 
+**Ongoing tuning note:** once tonemap curve profiles (section 3) were made available for photos, this feature's colour matrix and saturation reduction were found to stack with an active profile's own curve and look too aggressive/garish together — the matrix and saturation values have been retuned since and are still being iterated on/re-tested, rather than treated as a final calibration.
+
 ### 5. OpenCV post-processing pipeline
 
 **File:** `PostProcessing.java`
 
-Four advanced post-processing features powered by OpenCV, each with a dedicated toolbar button:
+Four user-toggleable post-processing features powered by OpenCV, each with a dedicated toolbar button, plus two always-on internal steps that aren't separately toggleable:
 
 | Feature | Method | Description |
 |---|---|---|
-| **Noise Reduction** | Bilateral Filter, ISO-adaptive strength | Smooths flat areas while preserving edges. Applied before sharpening. |
-| **Sharpening** | Unsharp Mask | Enhances fine detail without colour fringing. Applied after noise reduction. |
-| **Contrast Enhancement** | CLAHE (tile grid scaled to image resolution) | Improves local contrast on the L channel (Lab colour space), with brightness-weighted chroma compensation. Recovers shadow detail without blowing highlights. |
+| **Noise Reduction** | Bilateral Filter, scene-adaptive strength (LIGHT/MEDIUM/STRONG, see section 3a) | Smooths flat areas while preserving edges. Applied before sharpening. |
+| **Sharpening** | Unsharp Mask | Optional extra sharpening layered on top of the always-on baseline pass below. |
+| **Contrast Enhancement** | CLAHE (tile grid scaled to image resolution) | Improves local contrast on the L channel (Lab colour space). Recovers shadow detail without blowing highlights. |
 | **Blur Detection** | Laplacian variance | Analyses the final image and shows a warning toast if blur score is low. Does not modify the image. |
 
-Processing order: Colour correction → NR → Sharpen → CLAHE → Blur Detection. Each feature is toggled independently via its own toolbar button. All buttons are visible/hidden via **Settings → GUI Icons**.
+Always-on, not separately toggleable:
+
+- **Baseline sharpen**: a permanent, subtle Unsharp Mask pass applied to every photo regardless of the Sharpening toggle — closer to what a stock camera ISP already does as standard. Tuning note: on Ulefone, indoor/low-light with Noise Reduction off, the default amount was found to amplify visible sensor noise and was lowered accordingly (2026-07-30) — see the constant's doc comment in `PostProcessing.java` for the current value and test conditions.
+- **Tonemap desaturation compensation**: corrects the saturation loss caused by the Camera2 `TonemapCurve` being applied identically to R/G/B (see section 3, Custom tonemap curve profiles) — that mechanism has no luma-only mode, so highlights lose saturation as a side effect. Runs whenever an Image Profile curve is active (or always, in video), independent of the Contrast Enhancement toggle, since the curve itself is always active when a profile is selected.
+
+Processing order: Colour correction → Image Profile curve (photos only, see section 3) → Noise Reduction → Baseline Sharpen (always) → Sharpening (optional) → Tonemap Desaturation Compensation (when an Image Profile is active) → Contrast Enhancement → Blur Detection → Depth Effect / Bokeh (see section 3b — deliberately last, so it never triggers a false blur warning). Each user-facing feature is toggled independently via its own toolbar button; all buttons are visible/hidden via **Settings → GUI Icons**.
+
+### 3b. Depth Effect (Bokeh)
+
+**File:** `DepthEffect.java`, integrated via `PostProcessing.java`
+
+An optional portrait-style background blur applied to photos only (not video), toggled via **Settings → Processing → Depth Blur**. Estimates a depth map on-device using a bundled MiDaS v2.1 (small) TFLite model, refines it with a fast guided filter (plain box-filter based, since the project's OpenCV build doesn't include the `ximgproc` module needed for a ready-made joint bilateral filter), and blends a sharp foreground with a Gaussian-blurred background using a saturating falloff curve around an estimated focus depth. The TFLite interpreter is lazily created once and reused for the lifetime of the app's `PostProcessing` instance (not recreated per photo), released on app shutdown. Runs last in the post-processing pipeline (see section 5) so it never interferes with blur detection. Not currently recommended together with Colour Correction — the two haven't been fully validated together yet.
 
 ### 6. Device-specific image quality tuning
 
@@ -221,7 +234,8 @@ All legacy Android preference and fragment APIs migrated to AndroidX across all 
 | Physical camera discovery | `getCameraIdList()` only | Validated, filtered list + physical lens switching |
 | Zoom in still capture (Garnet) | Broken (HAL bug) | Fixed via software crop |
 | Tonemap profiles | Gamma / flat only | Standard, JTVideo, JTLog, JTLog2, Rec709, sRGB, Log, Gamma, S-Log3 — applied live in video, post-capture in photos |
-| AI Scene Detection | — | On-device classifier (backlit/low-light/indoor/standard) adjusts NR strength and sharpening automatically |
+| AI Scene Detection | — | On-device classifier (backlit/low-light/indoor/standard) adjusts NR strength, sharpening, and backlit exposure bias automatically |
+| Depth Effect (Bokeh) | — | On-device MiDaS depth estimation + guided filter, portrait-style background blur, photos only |
 | Vendor HDR extension session | Not auto-selected | Manual `X_HDR` + automatic ISO-based Auto HDR, both restricted to Xiaomi/Ulefone |
 | Processing-time feedback | None | Real extension progress % where available, elapsed-time toast fallback everywhere else |
 | Colour correction | — | Post-processing pipeline |
@@ -251,7 +265,7 @@ All legacy Android preference and fragment APIs migrated to AndroidX across all 
 ### Dependencies (additions over upstream)
 
 ```gradle
-implementation 'com.google.mlkit:barcode-scanning:17.3.0'
+implementation 'com.google.mlkit:image-labeling:17.0.9'
 implementation 'org.tensorflow:tensorflow-lite:2.16.1'
 implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
 implementation 'com.quickbirdstudios:opencv:4.5.3.0'

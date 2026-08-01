@@ -98,6 +98,14 @@
         />
 
     <CheckBoxPreference
+        android:key="preference_show_depth_blur"
+        android:title="@string/preference_show_depth_blur"
+        android:summary="@string/preference_show_depth_blur_summary"
+        android:icon="@drawable/ic_depth_effect_white_48dp"
+        android:defaultValue="false"
+        />
+
+    <CheckBoxPreference
         android:key="preference_show_stamp"
         android:title="@string/preference_show_stamp"
         android:summary="@string/preference_show_stamp_summary"

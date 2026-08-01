@@ -49,6 +49,7 @@ public class OnScreenIcons {
     private final ToastBoxer opencv_nr_toast = new ToastBoxer();
     private final ToastBoxer opencv_clahe_toast = new ToastBoxer();
     private final ToastBoxer opencv_blur_detect_toast = new ToastBoxer();
+    private final ToastBoxer depth_blur_toast = new ToastBoxer();
 
     public OnScreenIcons(MainActivity main_activity) {
         if( MyDebug.LOG )
@@ -72,6 +73,7 @@ public class OnScreenIcons {
         buttons.add(main_activity.findViewById(R.id.opencv_nr));
         buttons.add(main_activity.findViewById(R.id.opencv_clahe));
         buttons.add(main_activity.findViewById(R.id.opencv_blur_detect));
+        buttons.add(main_activity.findViewById(R.id.depth_blur));
         buttons.add(main_activity.findViewById(R.id.cycle_flash));
         buttons.add(main_activity.findViewById(R.id.face_detection));
         buttons.add(main_activity.findViewById(R.id.audio_control));
@@ -95,6 +97,7 @@ public class OnScreenIcons {
         this.updateOpenCVNRIcon();
         this.updateOpenCVCLAHEIcon();
         this.updateOpenCVBlurDetectIcon();
+        this.updateDepthBlurIcon();
         this.updateCycleFlashIcon();
         this.updateFaceDetectionIcon();
         this.updateCycleLockOrientationIcon();
@@ -201,6 +204,14 @@ public class OnScreenIcons {
         view.setContentDescription( main_activity.getResources().getString(enabled ? R.string.opencv_blur_detect_disable : R.string.opencv_blur_detect_enable) );
     }
 
+    // [REALCAMMI FORK] On-screen toggle for Depth Effect (Bokeh), mirroring the OpenCV icons above.
+    private void updateDepthBlurIcon() {
+        ImageButton view = main_activity.findViewById(R.id.depth_blur);
+        boolean enabled = main_activity.getApplicationInterface().getDepthBlurPref();
+        view.setImageResource(enabled ? R.drawable.ic_depth_effect_white_48dp_red : R.drawable.ic_depth_effect_white_48dp);
+        view.setContentDescription( main_activity.getResources().getString(enabled ? R.string.depth_blur_disable : R.string.depth_blur_enable) );
+    }
+
     private void updateCycleFlashIcon() {
         // n.b., read from preview rather than saved application preference - so the icon updates correctly when in flash
         // auto mode, but user switches to manual ISO where flash auto isn't supported
@@ -294,6 +305,7 @@ public class OnScreenIcons {
         View opencvNRButton = main_activity.findViewById(R.id.opencv_nr);
         View opencvCLAHEButton = main_activity.findViewById(R.id.opencv_clahe);
         View opencvBlurDetectButton = main_activity.findViewById(R.id.opencv_blur_detect);
+        View depthBlurButton = main_activity.findViewById(R.id.depth_blur);
         View cycleFlashButton = main_activity.findViewById(R.id.cycle_flash);
         View faceDetectionButton = main_activity.findViewById(R.id.face_detection);
         View audioControlButton = main_activity.findViewById(R.id.audio_control);
@@ -326,6 +338,8 @@ public class OnScreenIcons {
             opencvCLAHEButton.setVisibility(visibility);
         if( showOpenCVBlurDetectIcon() )
             opencvBlurDetectButton.setVisibility(visibility);
+        if( showDepthBlurIcon() )
+            depthBlurButton.setVisibility(visibility);
         if( showCycleFlashIcon() )
             cycleFlashButton.setVisibility(visibility);
         if( showFaceDetectionIcon() )
@@ -413,6 +427,11 @@ public class OnScreenIcons {
         }
         if( !showOpenCVBlurDetectIcon() ) {
             View button = main_activity.findViewById(R.id.opencv_blur_detect);
+            changed = changed || (button.getVisibility() != View.GONE);
+            button.setVisibility(View.GONE);
+        }
+        if( !showDepthBlurIcon() ) {
+            View button = main_activity.findViewById(R.id.depth_blur);
             changed = changed || (button.getVisibility() != View.GONE);
             button.setVisibility(View.GONE);
         }
@@ -539,6 +558,13 @@ public class OnScreenIcons {
     boolean showOpenCVBlurDetectIcon() {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(main_activity);
         return sharedPreferences.getBoolean(PreferenceKeys.ShowOpenCVBlurDetectPreferenceKey, false);
+    }
+
+    boolean showDepthBlurIcon() {
+        // no hardware support check needed: depth effect is a software post-processing step
+        // (DepthEffect.java, run in PostProcessing.postProcessBitmap()), so it works on any device
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(main_activity);
+        return sharedPreferences.getBoolean(PreferenceKeys.ShowDepthBlurPreferenceKey, false);
     }
 
     boolean showCycleFlashIcon() {
@@ -827,6 +853,17 @@ public class OnScreenIcons {
         updateOpenCVBlurDetectIcon();
         String message = main_activity.getResources().getString(R.string.preference_opencv_blur_detect) + ": " + main_activity.getResources().getString(value ? R.string.on : R.string.off);
         main_activity.getPreview().showToast(opencv_blur_detect_toast, message, true);
+    }
+
+    public void clickedDepthBlur() {
+        if( MyDebug.LOG )
+            Log.d(TAG, "clickedDepthBlur");
+        boolean value = !main_activity.getApplicationInterface().getDepthBlurPref();
+        final SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(main_activity);
+        sharedPreferences.edit().putBoolean(PreferenceKeys.DepthBlurPreferenceKey, value).apply();
+        updateDepthBlurIcon();
+        String message = main_activity.getResources().getString(R.string.preference_depth_blur) + ": " + main_activity.getResources().getString(value ? R.string.on : R.string.off);
+        main_activity.getPreview().showToast(depth_blur_toast, message, true);
     }
 
     public void clickedCycleFlash() {

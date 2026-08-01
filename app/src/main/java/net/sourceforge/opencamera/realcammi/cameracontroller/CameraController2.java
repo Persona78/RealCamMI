@@ -82,6 +82,43 @@ import android.view.WindowMetrics;
 public class CameraController2 extends CameraController {
     private static final String TAG = "CameraController2";
 
+    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item B] Caches the already-decoded, already-cropped
+    // Bitmap produced by the software zoom-crop workaround below (see the crop block inside
+    // OnImageAvailableListener.onImageAvailable()), keyed by exact reference (not content) of the
+    // final compressed byte[] handed onward to the rest of the capture pipeline. When zoom is
+    // active AND any post-processing runs afterwards, PostProcessing.postProcessBitmap() would
+    // otherwise decode this exact JPEG a second time from scratch in ImageSaver.java - a fully
+    // redundant decode of an image that was already in memory moments earlier as croppedBitmap.
+    // ImageSaver.java checks this cache before decoding "data" itself; if the byte[] reference
+    // doesn't match exactly (e.g. burst mode reusing/reassigning arrays, or any other code path
+    // that doesn't go through this exact crop block), it always falls back to the normal decode
+    // path unchanged - a cache miss can never produce a wrong result, only a missed optimisation.
+    public static class LastCroppedBitmapCache {
+        private static byte[] cached_data;
+        private static Bitmap cached_bitmap;
+
+        public static synchronized void put(byte[] data, Bitmap bitmap) {
+            cached_data = data;
+            cached_bitmap = bitmap;
+        }
+
+        /** Returns the cached bitmap only if data is the exact same array reference that was
+         *  passed to put() - reference identity (==), not content equality, so two captures
+         *  that happened to produce byte-identical JPEGs could never be confused with each
+         *  other. Clears the cache entry on a hit (whether taken or not applicable), so a
+         *  stale bitmap can never be handed out twice or reused for a different data array.
+         */
+        public static synchronized Bitmap takeIfMatches(byte[] data) {
+            if( data == cached_data && cached_bitmap != null ) {
+                Bitmap result = cached_bitmap;
+                cached_data = null;
+                cached_bitmap = null;
+                return result;
+            }
+            return null;
+        }
+    }
+
     private final Context context;
     // Whether activity is paused - although the camera should be released when the app is paused,
     // will be a short period before that happens (especially if closing camera on background thread).
@@ -267,7 +304,10 @@ public class CameraController2 extends CameraController {
     private boolean previewIsVideoMode; // whether currently recording video
     private AutoFocusCallback autofocus_cb;
     // Safe, industry-standard maximum focus sweep timeout
-    private long autofocus_time_ms = 3000L;
+
+    // 1000 or 1500 (Fast Focusing / Action Photography)
+    // 2000 or 2500 (Recommended for Video/General)
+    private long autofocus_time_ms = 1800L;
     private long autofocus_start_time_ms = -1L;  // time we set autofocus_cb to non-null
 
     public long getAutofocus_start_time_ms() {
@@ -279,8 +319,10 @@ public class CameraController2 extends CameraController {
 
     /* most camera apps (including RealCamMI's own defaults) use somewhere between 2500ms and 5000ms for this timeout,
     balancing responsiveness with giving the lens enough time to actually achieve focus, especially indoors or in low light.
+    4000 or 5000 (Recommended / Safe Default) - Safe for dark environments (low light)
+    3000 (Aggressive / Fast Focusing)
      */
-    private static final long autofocus_timeout_c = 3000L; // timeout for calling autofocus_cb (applies for both auto and continuous focus) 3 seconds
+    private static final long autofocus_timeout_c = 4500L; // timeout for calling autofocus_cb (applies for both auto and continuous focus)
 
     private boolean capture_follows_autofocus_hint;
     private boolean ready_for_capture;
@@ -310,12 +352,12 @@ public class CameraController2 extends CameraController {
 
     private BurstType burst_type = BurstType.BURSTTYPE_NONE;
     // for BURSTTYPE_EXPO:
-    private final static int max_expo_bracketing_n_images = 8; // default 5 for now
-    private int expo_bracketing_n_images = 5; // default - 3;
+    private final static int max_expo_bracketing_n_images = 5;
+    private int expo_bracketing_n_images = 3;
     private double expo_bracketing_stops = 8.0;
     private boolean use_expo_fast_burst = true;  // for BURSTTYPE_FOCUS:
     private boolean focus_bracketing_in_progress; // whether focus bracketing in progress; set back to false to cancel
-    private int focus_bracketing_n_images = 5; // default - 3;
+    private int focus_bracketing_n_images = 3; //
     private float focus_bracketing_source_distance = -0.0f;
     private float focus_bracketing_target_distance = 0.0f;
     private boolean focus_bracketing_add_infinity = false; // for BURSTTYPE_NORMAL:
@@ -382,7 +424,7 @@ public class CameraController2 extends CameraController {
     private static final int STATE_WAITING_FAKE_PRECAPTURE_START = 4;
     private static final int STATE_WAITING_FAKE_PRECAPTURE_DONE = 5;
     private int state = STATE_NORMAL;
-    private long precapture_state_change_time_ms = -1; // time we changed state for precapture modes
+    private long precapture_state_change_time_ms = -1L; // time we changed state for precapture modes
     private static final long precapture_start_timeout_c = 1000L;
     private static final long precapture_done_timeout_c = 3000L;
 
@@ -420,9 +462,6 @@ public class CameraController2 extends CameraController {
     private boolean capture_result_has_aperture;
     private float capture_result_aperture;
 
-    /* private boolean capture_result_has_focus_distance;
-    private float capture_result_focus_distance_min;
-    private float capture_result_focus_distance_max;*/
     /** Even if using long exposure, we want to set a maximum for the preview to avoid very low
      *  frame rates.
      *  Originally this was 1/12s, but I think we can get away with 1/5s - for this range, having
@@ -431,8 +470,8 @@ public class CameraController2 extends CameraController {
      *  different to the preview.
      */
 
-    final static long max_preview_exposure_time_c = 1000000000L/10; // 1000000000L/5; default Open Camera
-    // Shutter speed: The camera sensor remains open for a maximum of 1/10 of a second (100 ms) per frame.
+    final static long max_preview_exposure_time_c = 1000000000L/15; // 1000000000L/5; default Open Camera
+    // Shutter speed: The camera sensor remains open for a maximum of 1/15 of a second (~66ms) per frame.
     // Guaranteed fluidity: In very dark rooms, the preview rate drops to a minimum of 10 FPS (frames per second),
     // preventing the screen from freezing completely. Light gain: The camera captures three times
     // more light than it would if limited to 30 FPS.
@@ -587,10 +626,10 @@ public class CameraController2 extends CameraController {
     }
 
     private static float RGBtoGain(float value) {
-        final float max_gain_c = 8.5f; // RealCamMI 10.0f default value, set 8.5f to try to get Less Digital Noise (Grain):
+        final float max_gain_c = 9.0f; // RealCamMI 10.0f default value, set 9.0f to try to get Less Digital Noise (Grain):
         // In extremely dark areas of the image (where maximum gain is activated), the camera will amplify the
         // signal slightly less. This helps reduce visual noise (those colored dots or "grain" that appear in dark areas).
-        // Slightly Darker Shadows: Since the gain has been limited to 8.5f instead of 10.0f, absolute blacks or very
+        // Slightly Darker Shadows: Since the gain has been limited to 9.0f instead of 10.0f, absolute blacks or very
         // deep shadows will not be lightened as much. The image may take on a slightly higher-contrast look in these dark zones.
         if( value < 1.0e-5f ) {
             return max_gain_c;
@@ -726,6 +765,7 @@ public class CameraController2 extends CameraController {
 
         @Override
         public void onImageAvailable(ImageReader reader) {
+
             if( MyDebug.LOG )
                 Log.d(TAG, "new still image available");
             if( picture_cb == null || !jpeg_todo ) {
@@ -766,8 +806,10 @@ public class CameraController2 extends CameraController {
             buffer.get(bytes);
             // [REALCAMMI FORK] Software crop workaround: Xiaomi's CamX HAL ignores CONTROL_ZOOM_RATIO/SCALER_CROP_REGION
             // during still capture (confirmed via logcat: IQSetupTriggerData "pZoomRatioData is NULL"),
-            // so we crop the JPEG ourselves after capture.
-            if ((is_ulefone || is_xiaomi) && camera_settings.current_zoom_ratio > 1.0f) {
+            // so we crop the JPEG ourselves after capture. Gated to is_xiaomi/is_ulefone deliberately:
+            // on devices whose HAL applies zoom correctly, this software crop would run on top of a
+            // frame the HAL already cropped, effectively doubling the zoom and losing field of view.
+            if ((is_xiaomi || is_ulefone) && camera_settings.current_zoom_ratio > 1.0f) {
                 try {
                     BitmapFactory.Options options = new BitmapFactory.Options();
                     Bitmap originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
@@ -783,8 +825,16 @@ public class CameraController2 extends CameraController {
                         float zoom = (capture_result_zoom_ratio > 1.0f) ? capture_result_zoom_ratio : camera_settings.current_zoom_ratio;
                         int cropWidth = (int) (w / zoom);
                         int cropHeight = (int) (h / zoom);
-                        int x = (int) ((w - cropWidth) / 0.5);
-                        int y = (int) ((h - cropHeight) / 0.5);
+                        // [REALCAMMI FORK BUGFIX] Must divide by 2.0 here, not 0.5. To center a crop
+                        // window of width cropWidth inside a frame of width w, the left offset is
+                        // (w - cropWidth) / 2 - dividing by 0.5 instead multiplies by 2, which pushes
+                        // x/y outside the bitmap's valid bounds for any zoom > 1x, making
+                        // Bitmap.createBitmap() throw every time (silently caught below, so the crop
+                        // then never actually applies - this has regressed back to /0.5 more than once,
+                        // if you're reading this while investigating a "zoom doesn't crop" report, this
+                        // is almost certainly why).
+                        int x = (int) ((w - cropWidth) / 2.0);
+                        int y = (int) ((h - cropHeight) / 2.0);
 
                         Bitmap croppedBitmap = Bitmap.createBitmap(originalBitmap, x, y, cropWidth, cropHeight);
 
@@ -803,6 +853,20 @@ public class CameraController2 extends CameraController {
                         }
                         croppedBitmap.compress(Bitmap.CompressFormat.JPEG, jpeg_quality, stream);
                         bytes = stream.toByteArray();
+
+                        // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item B] Cache a mutable copy of
+                        // this already-cropped bitmap, keyed to the exact "bytes" reference just
+                        // above, so ImageSaver.java can reuse it instead of decoding this JPEG a
+                        // second time if any post-processing runs afterwards. Must be a *copy*,
+                        // not croppedBitmap itself: Bitmap.createBitmap(source, x, y, w, h) always
+                        // returns an IMMUTABLE bitmap (confirmed in official Android docs), but
+                        // PostProcessing writes directly into the bitmap it receives (e.g.
+                        // stampImage()'s "new Canvas(bitmap)") - handing it the immutable original
+                        // would throw as soon as any post-processing tried to draw on it, crashing
+                        // every zoomed photo that also had any post-processing enabled. The copy
+                        // itself is a cheap pixel memcpy, far less costly than re-decoding the JPEG.
+                        Bitmap cacheableCroppedBitmap = croppedBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                        LastCroppedBitmapCache.put(bytes, cacheableCroppedBitmap);
 
                         originalBitmap.recycle();
                         croppedBitmap.recycle();
@@ -909,6 +973,7 @@ public class CameraController2 extends CameraController {
                         Log.d(TAG, "time since start: " + (System.currentTimeMillis() - slow_burst_start_ms));
                     }
                     if( burst_type != BurstType.BURSTTYPE_FOCUS ) {
+
                         /*try {
                             if( hasCaptureSession() ) { // make sure camera wasn't released in the meantime
                                 captureSession.capture(slow_burst_capture_requests.get(n_burst_taken), previewCaptureCallback, handler);
@@ -926,59 +991,13 @@ public class CameraController2 extends CameraController {
                         // Tune 5
                         if( previewBuilder != null ) { // make sure camera wasn't released in the meantime
 
-                        //previewBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-
-                        // Starting image enhancement process
-                        // Reduces thermal noise by limiting maximum sensitivity in preview/burst mode.
-                            Range<Integer> selectedFpsRange = new Range<>(15, 30); // Professional safe fallback for maximum device compatibility
-                            if (characteristics != null) {
-                                Range<Integer>[] availableRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-                                if (availableRanges != null) {
-                                    for (Range<Integer> range : availableRanges) {
-                                        // Locate the standard professional range allowing exposure expansion down to 15 FPS
-                                        if (range.getLower() <= 15 && range.getUpper() >= 30) {
-                                            selectedFpsRange = range;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            previewBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, selectedFpsRange);
-
-                        // Corrects chromatic aberrations (colored fringes) with the correct constant.
-                            int optimalAberrationMode = CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_FAST; // Standard safe fallback
-                            if (characteristics != null) {
-                                int[] availableAberrationModes = characteristics.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES);
-                                if (availableAberrationModes != null) {
-                                    for (int mode : availableAberrationModes) {
-                                        // Prioritize high-quality processing engine to correct color fringing along object boundaries
-                                        if (mode == CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY) {
-                                            optimalAberrationMode = mode;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            previewBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, optimalAberrationMode);
-
-                        // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
-                        // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
-                        // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
-                        // own pipeline, showing up as a visible color blotch in a corner of the photo.
-                            int optimalShadingMode = CameraMetadata.SHADING_MODE_FAST; // Standard safe fallback for all devices
-                            if (characteristics != null) {
-                                int[] availableShadingModes = characteristics.get(CameraCharacteristics.SHADING_AVAILABLE_MODES);
-                                if (availableShadingModes != null) {
-                                    for (int mode : availableShadingModes) {
-                                        // Prioritize high-quality algorithmic processing to ensure uniform illumination across the image frame
-                                        if (mode == CameraMetadata.SHADING_MODE_HIGH_QUALITY) {
-                                            optimalShadingMode = mode;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            previewBuilder.set(CaptureRequest.SHADING_MODE, optimalShadingMode);
+                            // [REALCAMMI FORK] Removed: 3 dead/commented-out blocks used to sit here (forced
+                            // CONTROL_AE_TARGET_FPS_RANGE=[15,30], forced COLOR_CORRECTION_ABERRATION_MODE, forced
+                            // SHADING_MODE) - stale duplicates of code already handled elsewhere (the fps-range
+                            // override was removed for good reason in Camera2Settings.java's setupBuilder(); the
+                            // aberration/shading mode selection already lives, live and active, in
+                            // Camera2Settings.setWhiteBalance()). Never enabled here, so removing has no
+                            // functional effect - just cleanup.
 
                             // Enable Optical Image Stabilization if phone's hardware supports it.
                             boolean oisApplied = false;
@@ -996,7 +1015,6 @@ public class CameraController2 extends CameraController {
                                     }
                                 }
                             }
-
                             if (!oisApplied) {
                                 // Professional safe fallback: apply electronic stabilization (EIS) if physical OIS hardware is missing
                                 previewBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF);
@@ -1546,24 +1564,21 @@ public class CameraController2 extends CameraController {
 
                         CameraController2.this.camera = cam;
 
-                        // [REALCAMMI FORK] Forces vendor camera-extension HDR session on Ulefone/Xiaomi/Samsung devices
-                        // - not present upstream, which never auto-selects SESSIONTYPE_EXTENSION this way.
-                        // Parentheses around the manufacturer check are required: without them, Java's && precedence
-                        // over || would let Ulefone/Xiaomi bypass the SDK_INT/extension_characteristics null checks,
-                        // causing a NullPointerException on extensions.contains() for those devices on Android < 12.
-                        if ((is_ulefone || is_xiaomi || is_samsung) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && extension_characteristics != null) {
-                            List<Integer> extensions = null;
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                extensions = extension_characteristics.getSupportedExtensions();
-                            }
-                            if (extensions.contains(CameraExtensionCharacteristics.EXTENSION_HDR)) {
-                                CameraController2.this.sessionType = SessionType.SESSIONTYPE_EXTENSION;
-                                CameraController2.this.camera_extension = 1;
-                                if( MyDebug.LOG ) {
-                                    Log.d(TAG, "Ulefone Hardware HDR successfully intercepted.");
-                                }
-                            }
-                        }
+                        // [REALCAMMI FORK] Removed: this used to unconditionally force
+                        // sessionType = SESSIONTYPE_EXTENSION right here, for any device that supports
+                        // EXTENSION_HDR - regardless of which photo mode was actually selected (even
+                        // Standard/DRO). That's redundant with, and conflicts with, the proper decision
+                        // already made in Preview.java (~setupCameraParameters, "seems sensible to set
+                        // extension mode (or not) first"), which correctly checks
+                        // applicationInterface.isCameraExtensionPref() / Auto HDR and calls
+                        // setCameraExtension() at the right time, before any capture session exists.
+                        // Forcing it here first meant that logic then had to tear the forced extension
+                        // session back down on every camera (re)open where the selected mode didn't
+                        // actually need it - the likely cause of the preview freeze reported when
+                        // switching between photo modes (e.g. Standard -> HDR -> DRO). sessionType now
+                        // simply keeps its default (SESSIONTYPE_NORMAL) here, and Preview.java's existing
+                        // logic remains the single source of truth for when to use the vendor extension
+                        // pipeline.
 
                         createPreviewRequest();
 
@@ -1673,12 +1688,11 @@ public class CameraController2 extends CameraController {
 
             // XIAOMI/ULEFONE: hidden cameras can't be opened directly.
             // Remap to logical parent and route output via setPhysicalCameraId().
-            if( is_samsung ||is_samsung_galaxy_s ||is_samsung_galaxy_f || is_xiaomi || is_ulefone ) {
                 if( "4".equals(this.cameraIdS) || "5".equals(this.cameraIdS) ) {
                     Log.e(TAG, "Blocking known bad virtual camera " + this.cameraIdS);
                     throw new CameraControllerException();
                 }
-            }
+
 
             String idToOpen = this.cameraIdS;
             if( MyDebug.LOG )
@@ -3908,7 +3922,7 @@ public class CameraController2 extends CameraController {
                 if( camera_settings.has_edge_mode != has_edge_mode || camera_settings.edge_mode != selected_value2 ) {
                     camera_settings.has_edge_mode = has_edge_mode;
                     camera_settings.edge_mode = selected_value2;
-                    if( camera_settings.setEdgeMode(previewBuilder) ) {
+                    if( camera_settings.setEdgeMode(previewBuilder, false) ) {
                         try {
                             setRepeatingRequest();
                         }
@@ -4329,13 +4343,6 @@ public class CameraController2 extends CameraController {
     @Override
     public boolean isCameraExtension() {
         return this.sessionType == SessionType.SESSIONTYPE_EXTENSION;
-    }
-
-    // [REALCAMMI FORK] Devices we've actually vetted for the EXTENSION_HDR vendor pipeline.
-    // Deliberately excludes Samsung: the only Samsung device tested (Galaxy S10e) showed no
-    // effect, and is_samsung is a broad manufacturer check that would silently re-include it.
-    public boolean isTrustedVendorExtensionDevice() {
-        return is_xiaomi || is_ulefone;
     }
 
     // [REALCAMMI FORK] Piece 3: called from Preview.java's post-open sync block, mirroring how
@@ -5675,42 +5682,97 @@ public class CameraController2 extends CameraController {
         setRepeatingRequest(previewBuilder.build());
     }
 
+    // [REALCAMMI FORK BUGFIX] Checked variant used only where the caller needs to know whether the
+    // repeating request actually succeeded (as opposed to setRepeatingRequest(), which silently
+    // logs-and-swallows failures for its ~15 other call sites). Needed specifically for
+    // onConfigured() below, which runs on the camera's own background callback thread (never the
+    // main/UI thread) - so it's safe for this one to retry with a short blocking wait; see
+    // setRepeatingRequestInternal()'s comment for why the other call sites must NOT do that.
+    private boolean trySetRepeatingRequest() throws CameraAccessException {
+        return setRepeatingRequestInternal(previewBuilder.build(), true);
+    }
+
     private void setRepeatingRequest(CaptureRequest request) throws CameraAccessException {
+        setRepeatingRequestInternal(request, false);
+    }
+
+    // [REALCAMMI FORK BUGFIX] Confirmed via logcat (2026-07-25): right after onConfigured() fires
+    // on this Xiaomi CamX HAL, setRepeatingRequest() can throw "CaptureRequest contains
+    // unconfigured Input/Output Surface!" despite all those surfaces having been included when the
+    // session was created moments earlier. Not specific to any one surface - the whole session is
+    // briefly not ready. A second logcat capture showed this window can be considerably longer than
+    // first assumed (multiple full 5x60ms retry cycles - ~250ms each - all failing back to back,
+    // spanning 800ms+), so retrying needs real patience here.
+    //
+    // allow_retry=true (only used by trySetRepeatingRequest(), called from onConfigured() on the
+    // camera's background callback thread) retries with a short sleep between attempts - safe here
+    // because this thread has nothing else to do but wait for the session to become usable.
+    //
+    // allow_retry=false (used by every other call site, all on the main/UI thread, applying
+    // individual settings like ISO/white balance/focus after setup) does NOT retry or sleep - it
+    // fails fast exactly like before this fix existed. Retrying-with-sleep on the main thread would
+    // block the UI for up to the full retry budget on EVERY single setting applied after a mode
+    // switch (many, in sequence) - turning one bounded freeze into a much longer one. If the
+    // onConfigured() retry below succeeds, the session becomes genuinely ready and these later
+    // calls succeed immediately as normal; if it doesn't, retrying them too wouldn't help anyway.
+    private boolean setRepeatingRequestInternal(CaptureRequest request, boolean allow_retry) throws CameraAccessException {
         if( MyDebug.LOG )
-            Log.d(TAG, "setRepeatingRequest");
+            Log.d(TAG, "setRepeatingRequestInternal: allow_retry? " + allow_retry);
         synchronized( background_camera_lock ) {
             if( !hasCaptureSession() ) {
                 if( MyDebug.LOG )
                     Log.d(TAG, "no camera or capture session");
-                return;
+                return false;
             }
-            try {
-                if( sessionType == SessionType.SESSIONTYPE_EXTENSION ) {
-                    if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ) {
-                        extensionSession.setRepeatingRequest(request, executor, previewExtensionCaptureCallback);
+            // [REALCAMMI FORK BUGFIX] Shortened from 10x100ms: logcat evidence shows this HAL glitch
+            // routinely outlasts even 1-2 seconds of in-place retrying, so a long budget here mostly
+            // just delays reaching the real fix (MyApplicationInterface.onFailedStartPreview()'s
+            // automatic reopenCamera()) without meaningfully improving the odds of success.
+            final int max_attempts = allow_retry ? 3 : 1;
+            final long retry_delay_ms = 100;
+            for(int attempt = 1; attempt <= max_attempts; attempt++) {
+                try {
+                    if( sessionType == SessionType.SESSIONTYPE_EXTENSION ) {
+                        if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ) {
+                            extensionSession.setRepeatingRequest(request, executor, previewExtensionCaptureCallback);
+                        }
+                    }
+                    else if( is_video_high_speed ) {
+                        CameraConstrainedHighSpeedCaptureSession captureSessionHighSpeed = (CameraConstrainedHighSpeedCaptureSession) captureSession;
+                        List<CaptureRequest> mPreviewBuilderBurst = captureSessionHighSpeed.createHighSpeedRequestList(request);
+                        captureSessionHighSpeed.setRepeatingBurst(mPreviewBuilderBurst, previewCaptureCallback, handler);
+                    }
+                    else {
+                        captureSession.setRepeatingRequest(request, previewCaptureCallback, handler);
+                    }
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "setRepeatingRequest done" + (attempt > 1 ? (", attempt " + attempt) : ""));
+                    return true;
+                }
+                catch(IllegalStateException e) {
+                    MyDebug.logStackTrace(TAG, "captureSession already closed!", e);
+                    // got this as a Google Play exception (from onCaptureCompleted->processCompleted) - this means the capture session is already closed
+                    return false; // session is gone - retrying won't help
+                }
+                catch(IllegalArgumentException e) {
+                    // got this as a Google Play exception due to "Each request must have at least one Surface target",
+                    // and (see class comment above) "CaptureRequest contains unconfigured Input/Output Surface!"
+                    if( attempt == max_attempts ) {
+                        MyDebug.logStackTrace(TAG, "setRepeatingRequest failed after " + attempt + " attempt(s)!", e);
+                        return false;
+                    }
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "setRepeatingRequest attempt " + attempt + " failed, retrying in " + retry_delay_ms + "ms: " + e.getMessage());
+                    try {
+                        Thread.sleep(retry_delay_ms);
+                    }
+                    catch(InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return false;
                     }
                 }
-                else if( is_video_high_speed /*&& Build.VERSION.SDK_INT >= Build.VERSION_CODES.M*/ ) {
-                    CameraConstrainedHighSpeedCaptureSession captureSessionHighSpeed = (CameraConstrainedHighSpeedCaptureSession) captureSession;
-                    List<CaptureRequest> mPreviewBuilderBurst = captureSessionHighSpeed.createHighSpeedRequestList(request);
-                    captureSessionHighSpeed.setRepeatingBurst(mPreviewBuilderBurst, previewCaptureCallback, handler);
-                }
-                else {
-                    captureSession.setRepeatingRequest(request, previewCaptureCallback, handler);
-                }
-                if( MyDebug.LOG )
-                    Log.d(TAG, "setRepeatingRequest done");
             }
-            catch(IllegalStateException e) {
-                MyDebug.logStackTrace(TAG, "captureSession already closed!", e);
-                // got this as a Google Play exception (from onCaptureCompleted->processCompleted) - this means the capture session is already closed
-            }
-            catch(IllegalArgumentException e) {
-                MyDebug.logStackTrace(TAG, "failed to set repeating request!", e);
-                // got this as a Google Play exception due to "Each request must have at least one Surface target"
-                // possibly related to starting preview on background thread (due to it only occurring on Android 14+)
-                // in theory this should already be caught by the check for !hasCaptureSession(), but apparently not...
-            }
+            return false;
         }
     }
 
@@ -6105,12 +6167,14 @@ public class CameraController2 extends CameraController {
                         captureSession = session;
                         extensionSession = eSession;
                         previewBuilder.addTarget(surface_texture);
+                        boolean added_analysis_target = false;
                         if( analysisImageReader != null && sessionType != SessionType.SESSIONTYPE_EXTENSION ) {
                             // [REALCAMMI FORK] feed the low-res AI scene-detection reader continuously,
                             // same repeating preview request — throttling happens in its own listener
                             if( MyDebug.LOG )
                                 Log.d(TAG, "add analysis surface to previewBuilder: " + analysisImageReader.getSurface());
                             previewBuilder.addTarget(analysisImageReader.getSurface());
+                            added_analysis_target = true;
                         }
                         if( video_recorder != null ) {
                             if( MyDebug.LOG ) {
@@ -6119,8 +6183,39 @@ public class CameraController2 extends CameraController {
                             previewBuilder.addTarget(video_recorder_surface);
                         }
                         try {
-                            setRepeatingRequest();
-                            success = true;
+                            success = trySetRepeatingRequest();
+                            if( !success && added_analysis_target ) {
+                                // [REALCAMMI FORK BUGFIX] The analysis-reader surface is a nice-to-have
+                                // (AI scene detection / Auto HDR triggering), never worth freezing the
+                                // whole preview over. Drop it and try once more - a single attempt, not
+                                // another full retry cycle, since logcat evidence shows this rarely
+                                // helps (the whole session is typically unusable, not just this one
+                                // surface) - better to reach the real recovery path
+                                // (MyApplicationInterface.onFailedStartPreview()'s automatic
+                                // reopenCamera()) sooner than to burn more time retrying in place.
+                                if( MyDebug.LOG )
+                                    Log.d(TAG, "retry once without analysis target after failed repeating request");
+                                previewBuilder.removeTarget(analysisImageReader.getSurface());
+                                success = setRepeatingRequestInternal(previewBuilder.build(), false);
+                            }
+                            if( !success ) {
+                                // [REALCAMMI FORK BUGFIX] Without this, captureSession/extensionSession
+                                // stayed non-null even though the repeating request never actually
+                                // started - hasCaptureSession() below would then (wrongly) report the
+                                // session as fine, CameraControllerException would never get thrown, and
+                                // nothing downstream (Preview.java's error handling, or the caller
+                                // waiting on wait_until_started) would ever learn this attempt failed.
+                                // That's what left the preview permanently frozen on this Xiaomi HAL
+                                // failure mode - not just a case of "wait a bit longer", an actual
+                                // unreported failure. Clearing these here makes it behave exactly like
+                                // the CameraAccessException case just below: reported as a real failure,
+                                // so the normal error/retry path (CameraControllerException / on_failed)
+                                // takes over instead of silently leaving a dead session in place.
+                                if( MyDebug.LOG )
+                                    Log.e(TAG, "failed to set repeating request even after retries");
+                                captureSession = null;
+                                extensionSession = null;
+                            }
                         }
                         catch(CameraAccessException e) {
                             MyDebug.logStackTrace(TAG, "failed to start preview", e);
@@ -6993,7 +7088,10 @@ public class CameraController2 extends CameraController {
                 }
                 // important to use TEMPLATE_MANUAL for manual exposure: this fixes bug on Pixel 6 Pro where manual exposure is ignored when longer than the
                 // preview exposure time (oddly Galaxy S10e has the same bug since Android 11, but that isn't fixed with using TEMPLATE_MANUAL)
-                // 200626 - fix zoom picutres on Xiaomi redmi note 13 Pro 5G
+                // [REALCAMMI FORK] 200626 - fix zoom pictures on Xiaomi redmi note 13 Pro 5G: TEMPLATE_MANUAL
+                // breaks the CamX HAL's handling of zoom during still capture on this device, so manual
+                // exposure/ISO on Xiaomi still uses TEMPLATE_STILL_CAPTURE instead (the app's own
+                // manual-exposure controls are applied via the builder regardless of template type).
                 int templateType = CameraDevice.TEMPLATE_STILL_CAPTURE;
                 if (previewIsVideoMode) {
                     templateType = CameraDevice.TEMPLATE_VIDEO_SNAPSHOT;
@@ -8418,23 +8516,6 @@ public class CameraController2 extends CameraController {
         return capture_result_aperture;
     }
 
-    /*
-    @Override
-    public boolean captureResultHasFocusDistance() {
-        return capture_result_has_focus_distance;
-    }
-
-    @Override
-    public float captureResultFocusDistanceMin() {
-        return capture_result_focus_distance_min;
-    }
-
-    @Override
-    public float captureResultFocusDistanceMax() {
-        return capture_result_focus_distance_max;
-    }
-    */
-
     private final CameraExtensionSession.ExtensionCaptureCallback previewExtensionCaptureCallback;
 
     @RequiresApi(api = Build.VERSION_CODES.S)
@@ -9185,18 +9266,6 @@ public class CameraController2 extends CameraController {
                     long capture_result_frame_duration = result.get(CaptureResult.SENSOR_FRAME_DURATION);
                     Log.d(TAG, "capture_result_frame_duration: " + capture_result_frame_duration);
                 }
-            }*/
-            /*if( modified_from_camera_settings ) {
-                // see note above
-            }
-            else if( result.get(CaptureResult.LENS_FOCUS_RANGE) != null ) {
-                Pair<Float, Float> focus_range = result.get(CaptureResult.LENS_FOCUS_RANGE);
-                capture_result_has_focus_distance = true;
-                capture_result_focus_distance_min = focus_range.first;
-                capture_result_focus_distance_max = focus_range.second;
-            }
-            else {
-                capture_result_has_focus_distance = false;
             }*/
 
             if( modified_from_camera_settings ) {

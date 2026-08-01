@@ -137,6 +137,9 @@ public class PreferenceKeys {
     public static final String OpenCVCLAHEPreferenceKey     = "preference_opencv_clahe";
     // [REALCAMMI FORK] natural depth-of-field / portrait background blur, applied post-capture
     public static final String DepthBlurPreferenceKey       = "preference_depth_blur";
+    // [REALCAMMI FORK 2026-08-01] Settings-based strength preset for the depth-of-field blur
+    // (see DepthEffect.java setStrengthPreset()). Chosen before shooting, not live-previewed.
+    public static final String DepthBlurStrengthPreferenceKey = "preference_depth_blur_strength";
 
     public static final String OpenCVBlurDetectPreferenceKey = "preference_opencv_blur_detect";
 
@@ -290,6 +293,7 @@ public class PreferenceKeys {
     public static final String ShowOpenCVNRPreferenceKey         = "preference_show_opencv_nr";
     public static final String ShowOpenCVCLAHEPreferenceKey      = "preference_show_opencv_clahe";
     public static final String ShowOpenCVBlurDetectPreferenceKey = "preference_show_opencv_blur_detect";
+    public static final String ShowDepthBlurPreferenceKey        = "preference_show_depth_blur";
 
     public static final String ShowWhiteBalanceLockPreferenceKey = "preference_show_white_balance_lock";
 

@@ -86,6 +86,9 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     }
 
     private final MainActivity main_activity;
+    // [REALCAMMI FORK BUGFIX] Guards against retrying forever if the camera keeps failing to start
+    // (see onFailedStartPreview() below) - reset to 0 whenever a preview genuinely starts successfully.
+    private int failed_start_preview_recovery_attempts = 0;
     private final LocationSupplier locationSupplier;
     private final GyroSensor gyroSensor;
     private final StorageUtils storageUtils;
@@ -689,13 +692,26 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         else if( photo_mode == PhotoMode.NoiseReduction )
             return 100;
 
-        if( getColorCorrectionPref() )
-            return 100; // capture at full quality, since the image will be re-saved after color correction post-processing
-
-        if( getOpenCVNRPref() || getOpenCVSharpenPref() || getOpenCVCLAHEPref() || getDepthBlurPref() )
+        // [REALCAMMI FORK] Kept at 100 - these are multi-frame fusion modes (HDR/DRO/NoiseReduction,
+        // handled above) and RAW/format conversion, not simple single-frame cosmetic post-processing.
+        // A low-quality JPEG source would visibly hurt exposure fusion or a lossless format
+        // conversion, which is a different problem to the "double-lossy-compression" one below.
+        if( getImageFormatPref() != ImageSaver.Request.ImageFormat.STD )
             return 100;
 
-        if( getImageFormatPref() != ImageSaver.Request.ImageFormat.STD )
+        // [REALCAMMI FORK BUGFIX] Quality is no longer forced to 100 for Color Correction/OpenCV
+        // NR/Sharpen/CLAHE/Depth Blur - these are single-frame cosmetic post-processing options
+        // that all go through the same decode -> process -> recompress cycle regardless of the
+        // JPEG quality used, so forcing 100 there mainly added decode/encode codec work on every
+        // photo (confirmed disproportionately costly on lower-end SoCs, e.g. Ulefone Armor 25T
+        // Pro's Dimensity 6300 with only 2 performance cores vs the Xiaomi's 4) for a fairly small
+        // reduction in double-compression softness. Deliberate trade-off, decided 2026-07-28.
+        //
+        // Quality 100 IS still forced when zoom > 1x on is_xiaomi/is_ulefone devices: see
+        // CameraController2.onImageAvailable()'s software crop workaround, which decodes, crops,
+        // and recompresses the JPEG itself using this same getImageQualityPref() value - a low
+        // starting quality there would compound with the crop's inherent resolution loss.
+        if( main_activity.getPreview().getZoomRatio() > 1.0f )
             return 100;
 
         return getSaveImageQualityPref();
@@ -955,7 +971,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     @Override
     public float getVideoProfileGamma() {
-        String gamma_value = sharedPreferences.getString(PreferenceKeys.VideoProfileGammaPreferenceKey, "2.2");
+        String gamma_value = sharedPreferences.getString(PreferenceKeys.VideoProfileGammaPreferenceKey, "2.4");
         float gamma = 0.0f;
         try {
             gamma = Float.parseFloat(gamma_value);
@@ -1335,6 +1351,13 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         return sharedPreferences.getBoolean(PreferenceKeys.DepthBlurPreferenceKey, false);
     }
 
+    // [REALCAMMI FORK 2026-08-01] Strength preset ("subtle"/"natural"/"strong"/"very_strong")
+    // chosen in Settings before shooting - see DepthEffect.setStrengthPreset(). Default matches
+    // the on-device confirmed baseline (MAX_BLUR_SIGMA=6.0f, FALLOFF_SHARPNESS=1.25f).
+    public String getDepthBlurStrengthPref() {
+        return sharedPreferences.getString(PreferenceKeys.DepthBlurStrengthPreferenceKey, "natural");
+    }
+
     public boolean getAutoHDRPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.AutoHDRPreferenceKey, false);
     }
@@ -1344,7 +1367,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     // Independent of Auto HDR (EXTREME_BACKLIT) - see setAnalysisEnabled() in Preview.java,
     // which enables the analysis reader when EITHER this or getAutoHDRPref() is true.
     public boolean getAISceneDetectionPref() {
-        return sharedPreferences.getBoolean(PreferenceKeys.AISceneDetectionPreferenceKey, true);
+        return sharedPreferences.getBoolean(PreferenceKeys.AISceneDetectionPreferenceKey, false);
     }
 
     public boolean getOpenCVBlurDetectPref() {
@@ -2034,6 +2057,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     @Override
     public void cameraSetup() {
+        failed_start_preview_recovery_attempts = 0; // [REALCAMMI FORK BUGFIX] genuine success - reset the auto-recovery guard
         main_activity.cameraSetup();
         drawPreview.clearContinuousFocusMove();
         // Need to cause drawPreview.updateSettings(), otherwise icons like HDR won't show after force-restart, because we only
@@ -2808,8 +2832,36 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     @Override
     public void onFailedStartPreview() {
-        main_activity.getPreview().showToast(null, R.string.failed_to_start_camera_preview);
         main_activity.enablePausePreviewOnBackPressedCallback(false); // reenable standard back button behaviour (in case preview was paused due to option to pause preview after taking a photo)
+        // [REALCAMMI FORK BUGFIX] Confirmed via logcat (2026-07-25) on Xiaomi garnet: after certain
+        // camera reconfigures (e.g. switching Photo Mode, or changing ISO), the CamX HAL can hand
+        // back a capture session that Android reports as successfully configured, but which then
+        // permanently refuses every capture request with "CaptureRequest contains unconfigured
+        // Input/Output Surface!" - for the entire lifetime of that session, not a brief timing
+        // window. The only thing that has reliably cleared this (confirmed by the user) is fully
+        // closing and reopening the camera device - previously only happening by leaving to the
+        // gallery and coming back, leaving the preview frozen on the last frame until the user did
+        // that manually. Automate it here instead, bounded to a few attempts so a persistently
+        // broken camera still fails visibly rather than retry-looping forever. The toast is
+        // suppressed while attempts remain - no need to alarm the user over something we're about
+        // to silently fix ourselves; it only shows if we genuinely give up.
+        final int max_recovery_attempts = 3;
+        if( failed_start_preview_recovery_attempts < max_recovery_attempts ) {
+            failed_start_preview_recovery_attempts++;
+            if( MyDebug.LOG )
+                Log.d(TAG, "onFailedStartPreview: scheduling automatic camera recovery, attempt " + failed_start_preview_recovery_attempts);
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    main_activity.reopenCamera(true); // true: don't spam the "camera started" toast for an automatic recovery
+                }
+            }, 200);
+        }
+        else {
+            if( MyDebug.LOG )
+                Log.e(TAG, "onFailedStartPreview: giving up automatic recovery after " + failed_start_preview_recovery_attempts + " attempts");
+            main_activity.getPreview().showToast(null, R.string.failed_to_start_camera_preview);
+        }
     }
 
     @Override

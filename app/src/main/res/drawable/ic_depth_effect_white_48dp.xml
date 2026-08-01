@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+  <!-- [REALCAMMI FORK] Depth Effect (Bokeh) icon: an aperture ring around a sharp in-focus
+       subject, with soft blurred circles behind it standing in for out-of-focus background
+       bokeh - an original, simple design (no external artwork), matching the plain white/tinted-
+       red icon convention already used across this project's on-screen buttons. -->
+  <path
+      android:fillColor="#00000000"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="40"
+      android:pathData="M180,480 A300,300 0 1,0 780,480 A300,300 0 1,0 180,480 Z"/>
+  <path
+      android:fillColor="@android:color/white"
+      android:fillAlpha="0.55"
+      android:pathData="M540,320 A120,120 0 1,0 780,320 A120,120 0 1,0 540,320 Z"/>
+  <path
+      android:fillColor="@android:color/white"
+      android:fillAlpha="0.4"
+      android:pathData="M660,560 A80,80 0 1,0 820,560 A80,80 0 1,0 660,560 Z"/>
+  <path
+      android:fillColor="@android:color/white"
+      android:fillAlpha="0.35"
+      android:pathData="M200,260 A60,60 0 1,0 320,260 A60,60 0 1,0 200,260 Z"/>
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M260,580 A80,80 0 1,0 420,580 A80,80 0 1,0 260,580 Z"/>
+</vector>

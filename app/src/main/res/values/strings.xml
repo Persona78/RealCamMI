@@ -554,16 +554,6 @@
     <string name="preference_camera2_photo_video_recording" translatable="false">Allow photos whilst recording video</string>
     <string name="preference_camera2_photo_video_recording_summary" translatable="false">Allows taking photos whilst recording videos. Disable this if there are problems with video recording with Camera2 API enabled on your device.</string>
 
-    <string name="preference_video_log" translatable="false">Image profile</string>
-    <string name="preference_video_log_summary" translatable="false">Set standard or flat picture profile (applies to both photo and video)\n%s</string>
-    <string name="preference_video_log_off" translatable="false">Default</string>
-    <string name="preference_video_log_fine" translatable="false">Log (Fine)</string>
-    <string name="preference_video_log_low" translatable="false">Log (Low)</string>
-    <string name="preference_video_log_medium" translatable="false">Log (Medium)</string>
-    <string name="preference_video_log_strong" translatable="false">Log (Strong)</string>
-    <string name="preference_video_log_extra_strong" translatable="false">Log (Extra strong)</string>
-    <string name="video_log" translatable="false">Log profile</string>
-
     <string name="preference_record_audio_src_camcorder" translatable="false">Camcorder</string>
     <string name="preference_record_audio_src_mic" translatable="false">External mic (if present)</string>
     <string name="preference_record_audio_src_default" translatable="false">Default audio source</string>
@@ -795,6 +785,11 @@
     <string name="opencv_clahe_disable" translatable="false">Disable contrast enhancement</string>
     <string name="opencv_blur_detect_enable" translatable="false">Enable blur detection</string>
     <string name="opencv_blur_detect_disable" translatable="false">Disable blur detection</string>
+    <string name="depth_blur_enable" translatable="false">Enable depth effect (bokeh)</string>
+    <string name="depth_blur_disable" translatable="false">Disable depth effect (bokeh)</string>
+
+    <string name="preference_show_depth_blur" translatable="false">Show depth effect (bokeh) icon</string>
+    <string name="preference_show_depth_blur_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling the depth effect (bokeh)</string>
 
     <string name="preference_show_stamp" translatable="false">Show stamp photo icon</string>
     <string name="preference_show_stamp_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling photo stamp</string>
@@ -944,6 +939,16 @@
     </string>
 
     <string name="preference_select_remote" translatable="false">Select remote device</string>
+	
+    <string name="preference_video_log" translatable="false">Image profile</string>
+    <string name="preference_video_log_summary" translatable="false">Set standard or flat picture profile (applies to both photo and video)\n%s</string>
+    <string name="preference_video_log_off" translatable="false">Off</string>
+    <string name="preference_video_log_fine" translatable="false">Log (Fine)</string>
+    <string name="preference_video_log_low" translatable="false">Log (Low)</string>
+    <string name="preference_video_log_medium" translatable="false">Log (Medium)</string>
+    <string name="preference_video_log_strong" translatable="false">Log (Strong)</string>
+    <string name="preference_video_log_extra_strong" translatable="false">Log (Extra strong)</string>
+    <string name="video_log" translatable="false">Log profile</string>
 
     <string name="preference_video_rec709" translatable="false">REC709</string>
     <string name="preference_video_srgb" translatable="false">sRGB</string>
@@ -1063,6 +1068,13 @@
 
 	<string name="preference_depth_blur" translatable="false">Depth Effect (Bokeh) </string>
     <string name="preference_depth_blur_summary" translatable="false">When enabled will apply a neural network-based monocular depth estimation which takes a single photo that has already been captured and generates a depth map, without needing a dedicated depth sensor.</string>
+
+	<string name="preference_depth_blur_strength" translatable="false">Depth Effect Strength</string>
+    <string name="preference_depth_blur_strength_summary" translatable="false">Controls how strong the background blur looks (applied when the photo is captured, not previewed live). "Natural" is the on-device tested default; the other levels are untested estimates.</string>
+    <string name="preference_depth_blur_strength_subtle" translatable="false">Subtle</string>
+    <string name="preference_depth_blur_strength_natural" translatable="false">Natural (default)</string>
+    <string name="preference_depth_blur_strength_strong" translatable="false">Strong</string>
+    <string name="preference_depth_blur_strength_very_strong" translatable="false">Very Strong</string>
 
 
 	<string name="preference_ai_scene_detection" translatable="false">Scene Detection</string>
