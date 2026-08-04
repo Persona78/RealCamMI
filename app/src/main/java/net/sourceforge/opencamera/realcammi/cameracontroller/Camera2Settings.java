@@ -428,9 +428,9 @@ public class Camera2Settings {
     // through unchanged (100%, no cross-channel term).
     // Tune 1
     private static final Rational[] REALCAMMI_MATRIX_ELEMENTS = new Rational[] {
-            new Rational(101, 100), new Rational(-1, 100),  new Rational(0, 100), // RED Row   (101 - 1 + 0 = 100)
-            new Rational(0, 100),  new Rational(101, 100), new Rational(-1, 100), // GREEN Row (0 + 101 - 1 = 100)
-            new Rational(-1, 100),  new Rational(0, 100),  new Rational(101, 100) // BLUE Row  (-1 + 0 + 101 = 100)
+            new Rational(102, 100), new Rational(-2, 100),  new Rational(0, 100), // RED Row   (101 - 1 + 0 = 100)
+            new Rational(0, 100),  new Rational(102, 100), new Rational(-2, 100), // GREEN Row (0 + 101 - 1 = 100)
+            new Rational(-2, 100),  new Rational(0, 100),  new Rational(102, 100) // BLUE Row  (-1 + 0 + 101 = 100)
     };
     private static final ColorSpaceTransform REALCAMMI_COLOR_TRANSFORM = new ColorSpaceTransform(REALCAMMI_MATRIX_ELEMENTS);
 
@@ -485,7 +485,7 @@ public class Camera2Settings {
             // Scales the temperature-derived gains by saturationFactor, then clamps each
             // channel to [1.0, 4.0] - the typical valid COLOR_CORRECTION_GAINS range on most
             // devices - so an out-of-range gain is never sent to the HAL.
-            float saturationFactor = 1.35f;
+            float saturationFactor = 1.4f;
             float finalRed = Math.min(Math.max(temperatureVector.getRed() * saturationFactor, 1.0f), 4.0f);
             float finalGe = Math.min(Math.max(temperatureVector.getGreenEven() * saturationFactor, 1.0f), 4.0f);
             float finalGo = Math.min(Math.max(temperatureVector.getGreenOdd() * saturationFactor, 1.0f), 4.0f);

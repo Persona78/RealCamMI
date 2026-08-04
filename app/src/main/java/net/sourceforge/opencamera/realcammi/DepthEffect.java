@@ -93,6 +93,7 @@ public class DepthEffect {
     // confirmed baseline ("natural" preset) - unchanged behaviour if setStrengthPreset() is
     // never called.
     private float maxBlurSigma = DEFAULT_MAX_BLUR_SIGMA;
+
     private float falloffSharpness = DEFAULT_FALLOFF_SHARPNESS;
 
     private final Interpreter interpreter;
