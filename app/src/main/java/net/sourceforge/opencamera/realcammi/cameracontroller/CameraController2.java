@@ -179,9 +179,7 @@ public class CameraController2 extends CameraController {
 
     // [REALCAMMI FORK] Minimum tonemap curve points required to support our custom profiles.
     // Our curves (jtvideo=18, jtlog=17, jtlog2=18 points) need at least 18 points.
-    // The original upstream value of 128 was too high for many devices including Garnet,
-    // which caused the video log options to be hidden unnecessarily.
-    final static int tonemap_log_max_curve_points_c = 18; // Set to match RealCam MI curves (jtvideo=17, jtlog=17, jtlog2=18 points)
+    final static int tonemap_log_max_curve_points_c = 64;
     // typically is set to 64 or 128.
 
     // [REALCAMMI FORK] The following three tonemap curve arrays (jtvideo, jtlog, jtlog2)
