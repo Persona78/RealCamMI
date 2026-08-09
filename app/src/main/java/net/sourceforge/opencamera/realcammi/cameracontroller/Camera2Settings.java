@@ -48,6 +48,7 @@ public class Camera2Settings {
     private Integer default_color_correction;
     boolean has_antibanding;
     int antibanding = CameraMetadata.CONTROL_AE_ANTIBANDING_MODE_AUTO;
+    Range<Integer> fpsDinamico = new Range <> (7,30);
     boolean has_edge_mode;
     int edge_mode = CameraMetadata.EDGE_MODE_FAST;
     private boolean has_default_edge_mode;
@@ -276,6 +277,11 @@ public class Camera2Settings {
             }
             builder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
             builder.set(CaptureRequest.JPEG_QUALITY, jpeg_quality);
+            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -1);
+            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fpsDinamico);
+
+
         }
 
         setEdgeMode(builder, is_still);
@@ -296,7 +302,6 @@ public class Camera2Settings {
             /*builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
             builder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
             builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
-            builder.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);*/
 
             /*builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
             builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
@@ -306,6 +311,7 @@ public class Camera2Settings {
                 builder.set(CaptureRequest.TONEMAP_GAMMA, 5.0f);
             }*/
             /*if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ) {
+                // Setting the value to zero (or the hardware's default minimum value) tells the camera not to apply any post-RAW digital gain.
                 builder.set(CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST, 0);
             }*/
             /*builder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
@@ -317,6 +323,7 @@ public class Camera2Settings {
             builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
             builder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
             builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);*/
+
             /*if( MyDebug.LOG ) {
                 builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY);
                 TonemapCurve original_curve = builder.get(CaptureRequest.TONEMAP_CURVE);
