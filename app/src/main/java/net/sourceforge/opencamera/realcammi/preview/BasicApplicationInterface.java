@@ -1,8 +1,5 @@
 package net.sourceforge.opencamera.realcammi.preview;
 
-import java.util.Date;
-import java.util.List;
-
 import android.app.Activity;
 import android.graphics.Canvas;
 import android.location.Location;
@@ -15,6 +12,9 @@ import androidx.annotation.RequiresApi;
 
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
 import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
+
+import java.util.Date;
+import java.util.List;
 
 /** A partial implementation of ApplicationInterface that provides "default" implementations. So
  *  sub-classing this is easier than implementing ApplicationInterface directly - you only have to
@@ -315,17 +315,17 @@ public abstract class BasicApplicationInterface implements ApplicationInterface 
 
     @Override
     public int getExpoBracketingNImagesPref() {
-        return 3;
+        return 5;
     }
 
     @Override
     public double getExpoBracketingStopsPref() {
-        return 2.0;
+        return 3.0;
     }
 
     @Override
     public int getFocusBracketingNImagesPref() {
-        return 3;
+        return 5;
     }
 
     @Override

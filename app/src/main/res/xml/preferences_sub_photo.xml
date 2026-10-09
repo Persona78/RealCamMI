@@ -25,10 +25,44 @@
         android:defaultValue="false"
         />
 
+	<!-- [REALCAMMI FORK] Independent of both Auto HDR and AI Scene Detection - applies -EV
+         automatically on uniformly overexposed scenes (OVEREXPOSED, see SceneDetector.java). -->
+	<CheckBoxPreference
+        android:key="preference_auto_exposure_correction"
+        android:title="@string/preference_auto_exposure_correction"
+        android:summary="@string/preference_auto_exposure_correction_summary"
+        android:defaultValue="false"
+        />
+
+	<!-- [REALCAMMI FORK] Independent of Auto HDR/Exposure Correction/AI Scene Detection -
+         reopens in the vendor Night camera extension on LOW_LIGHT scenes, mirroring how Auto
+         HDR reopens in the HDR extension on EXTREME_BACKLIT. Requires device support for
+         CameraExtensionCharacteristics.EXTENSION_NIGHT (checked at runtime; no effect if
+         unsupported). -->
+	<CheckBoxPreference
+        android:key="preference_auto_night_mode"
+        android:title="@string/preference_auto_night_mode"
+        android:summary="@string/preference_auto_night_mode_summary"
+        android:defaultValue="false"
+        />
+
 	<CheckBoxPreference
         android:key="preference_ai_scene_detection"
         android:title="@string/preference_ai_scene_detection"
         android:summary="@string/preference_ai_scene_detection_summary"
+        android:defaultValue="false"
+        />
+
+    <!-- [REALCAMMI FORK 2026-09-18] "Best Shot" - Standard photo mode only. Reuses the FastBurst
+         capture mechanism internally to take a few quick frames per shutter press instead of one,
+         keeps only the sharpest, and discards the rest - see
+         MyApplicationInterface.handleBestShotFrame(). Off by default: unlike most of this fork's
+         other tuning, this is new capture-path logic, not yet validated end-to-end on real
+         hardware - test carefully (photo count, shutter timing, memory) before relying on it. -->
+	<CheckBoxPreference
+        android:key="preference_best_shot"
+        android:title="@string/preference_best_shot"
+        android:summary="@string/preference_best_shot_summary"
         android:defaultValue="false"
         />
 		
@@ -51,6 +85,17 @@
         android:defaultValue="natural"
         />
 
+    <!-- [REALCAMMI FORK] Manual NR strength preset, only applied when AI Scene Detection is off
+         - see PostProcessing.postProcessBitmap() and applyOpenCVNRMat(). -->
+    <net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference
+        android:key="preference_opencv_nr_strength"
+        android:title="@string/preference_nr_strength"
+        android:summary="@string/preference_nr_strength_summary"
+        android:entries="@array/preference_nr_strength_entries"
+        android:entryValues="@array/preference_nr_strength_values"
+        android:defaultValue="lower light"
+        />
+
     <ListPreference
         android:key="preference_save_preshots"
         android:title="@string/preference_save_preshots"
@@ -65,7 +110,7 @@
         android:key="preference_quality"
         android:title="@string/preference_quality"
         android:summary="@string/preference_quality_summary"
-        android:defaultValue="90"
+        android:defaultValue="100"
         />
 
     <ListPreference
@@ -171,6 +216,29 @@
         android:defaultValue="2.4"
         />
 
+    <!-- [REALCAMMI FORK 2026-09-02] Image Profile blend strength - entries/values verified
+         12-to-12 (see the arrays.xml comment on this same array pair) before using
+         ArraySeekBarPreference, learning from the exact gamma-array mismatch bug noted above. -->
+    <net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference
+        android:key="preference_image_profile_strength"
+        android:title="@string/preference_image_profile_strength"
+        android:summary="@string/preference_image_profile_strength_summary"
+        android:entries="@array/preference_image_profile_strength_entries"
+        android:entryValues="@array/preference_image_profile_strength_values"
+        android:defaultValue="10"
+        />
+
+    <!-- [REALCAMMI FORK 2026-09-04] Sharpness (OpenCV) blend strength - entries/values verified
+         12-to-12, same widget/pattern as Image Profile Strength above. -->
+    <net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference
+        android:key="preference_sharpness_strength"
+        android:title="@string/preference_sharpness_strength"
+        android:summary="@string/preference_sharpness_strength_summary"
+        android:entries="@array/preference_sharpness_strength_entries"
+        android:entryValues="@array/preference_sharpness_strength_values"
+        android:defaultValue="10"
+        />
+
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
     <ListPreference
@@ -179,7 +247,7 @@
         android:key="preference_expo_bracketing_n_images"
         android:summary="@string/preference_expo_bracketing_n_images_summary"
         android:title="@string/preference_expo_bracketing_n_images"
-        android:defaultValue="5"
+        android:defaultValue="3"
 		/>
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->
@@ -189,7 +257,7 @@
         android:key="preference_expo_bracketing_stops"
         android:summary="@string/preference_expo_bracketing_stops_summary"
         android:title="@string/preference_expo_bracketing_stops"
-        android:defaultValue="3"
+        android:defaultValue="2"
 		/>
 
     <!--  if we move this to another PreferenceGroup, we should update code to remove this Preference -->

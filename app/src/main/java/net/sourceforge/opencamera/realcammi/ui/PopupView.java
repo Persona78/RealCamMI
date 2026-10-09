@@ -1225,6 +1225,41 @@ public class PopupView extends LinearLayout {
         final Preview preview = main_activity.getPreview();
         boolean close_popup = false;
         int temperature = -1;
+
+        // [REALCAMMI FORK 2026-08-31, EXTENDED 2026-09-02] The ISO menu's own "Auto" option only
+        // resets ISO (+ its paired exposure time) back to automatic. This WB menu's "Auto" option
+        // is meant to be the "reset everything to automatic" control - so ALSO reset ISO/exposure
+        // time AND Exposure Compensation here (mirroring the ISO-reset logic, and reusing the
+        // existing clearExposureCompensationPref() for EV), on top of the WB reset that
+        // setWhiteBalance() below already performs. Exposure Compensation has no "auto" mode of
+        // its own (it's a numeric offset on top of whatever meters automatically) - "reset to
+        // standard" for it means back to its neutral default (0), not an auto/manual toggle like
+        // ISO or White Balance have.
+        boolean also_reset_iso = false;
+        if( selected_value.equals(CameraController.WHITE_BALANCE_DEFAULT) ) {
+            SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(main_activity);
+            String old_iso = sharedPreferences.getString(PreferenceKeys.ISOPreferenceKey, CameraController.ISO_DEFAULT);
+            if( !old_iso.equals(CameraController.ISO_DEFAULT) ) {
+                if( MyDebug.LOG )
+                    Log.d(TAG, "WB auto: also resetting ISO to auto (was manual)");
+                SharedPreferences.Editor editor = sharedPreferences.edit();
+                editor.putString(PreferenceKeys.ISOPreferenceKey, CameraController.ISO_DEFAULT);
+                editor.putLong(PreferenceKeys.ExposureTimePreferenceKey, CameraController.EXPOSURE_TIME_DEFAULT);
+                editor.apply();
+            }
+            if( MyDebug.LOG )
+                Log.d(TAG, "WB auto: also resetting exposure compensation to standard (0)");
+            main_activity.getApplicationInterface().clearExposureCompensationPref();
+            // [REALCAMMI FORK 2026-09-02] Always true here now (not just when ISO specifically
+            // changed): clearExposureCompensationPref() above only touches SharedPreferences, it
+            // doesn't push anything to the camera by itself - only the updateForSettings() call
+            // below (gated on this flag) actually applies it live. Without this fix, picking Auto
+            // while ISO was ALREADY auto (only EV had been changed) would clear the EV preference
+            // but never actually tell the camera, leaving the old EV bias still live until some
+            // unrelated settings change happened to trigger a reload - the exact bug reported.
+            also_reset_iso = true;
+        }
+
         if( selected_value.equals("manual") ) {
             if( preview.getCameraController() != null ) {
                 String current_white_balance = preview.getCameraController().getWhiteBalance();
@@ -1264,8 +1299,13 @@ public class PopupView extends LinearLayout {
         if( close_popup ) {
             main_activity.closePopup();
         }
-        //main_activity.updateForSettings(getResources().getString(R.string.white_balance) + ": " + selected_value);
-        //main_activity.closePopup();
+        if( also_reset_iso ) {
+            // [REALCAMMI FORK 2026-08-31, EXTENDED 2026-09-02] Apply the ISO/exposure-time/EV
+            // reset above the same way the ISO Auto button applies its own reset - a direct
+            // setWhiteBalance() call isn't enough to reconfigure ISO or push the EV change live,
+            // this needs the full settings reload.
+            main_activity.updateForSettings(true, getResources().getString(R.string.white_balance) + ": " + CameraController.WHITE_BALANCE_DEFAULT);
+        }
     }
 
     static abstract class ButtonOptionsPopupListener {

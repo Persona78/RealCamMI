@@ -1,0 +1,15 @@
+<vector android:height="48dp" android:tint="#ffffff"
+    android:viewportHeight="960" android:viewportWidth="960"
+    android:width="48dp" xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- [REALCAMMI FORK 2026-08-31] Metering mode icon: Matrix (whole-frame 3x3 grid) -->
+    <path android:fillColor="#ffffff" android:pathData="
+        M90,90 h220 v220 h-220 Z
+        M370,90 h220 v220 h-220 Z
+        M650,90 h220 v220 h-220 Z
+        M90,370 h220 v220 h-220 Z
+        M370,370 h220 v220 h-220 Z
+        M650,370 h220 v220 h-220 Z
+        M90,650 h220 v220 h-220 Z
+        M370,650 h220 v220 h-220 Z
+        M650,650 h220 v220 h-220 Z"/>
+</vector>

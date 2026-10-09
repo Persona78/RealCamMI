@@ -227,9 +227,17 @@ public class JavaImageProcessing {
         int height = stop_y-start_y;
         if( MyDebug.LOG )
             Log.d(TAG, "height: " + height);
-        //final int n_threads = 1;
-        final int n_threads = height >= 16 ? 4 : 1;
-        //final int n_threads = height >= 16 ? 8 : 1;
+        // [REALCAMMI FORK PERFORMANCE 2026-09-29] Was a fixed 4 threads whenever height>=16,
+        // regardless of how many cores the device actually has - leaving half or more of an
+        // 8-core phone idle during HDR/Panorama merges. Now scales with
+        // availableProcessors() (capped at 8, to avoid oversubscribing the rest of the system),
+        // while never using more threads than there are ~4-row chunks to hand out - same
+        // reasoning the old fixed value implicitly relied on, just no longer hardcoded to 4.
+        // On a 4-core device this reduces to exactly the old n_threads==4 behaviour; the small
+        // image (height<16) case is unchanged.
+        final int n_threads = ( height >= 16 )
+                ? Math.max(1, Math.min(Math.min(8, Runtime.getRuntime().availableProcessors()), height / 4))
+                : 1;
         function.init(n_threads);
         ApplyFunctionThread [] threads = new ApplyFunctionThread[n_threads];
         int st_indx = 0;

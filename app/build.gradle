@@ -15,6 +15,18 @@ android {
 		
         // Required runner for your instrumented tests below
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // [REALCAMMI FORK PERFORMANCE 2026-09-29] The release APK was bundling native libs
+        // (OpenCV, TensorFlow Lite) for arm64-v8a, armeabi-v7a, x86 AND x86_64 - libopencv_java4.so
+        // alone is ~50MB per ABI. Every real phone (including the Redmi this fork targets) is
+        // arm64-v8a; x86/x86_64 only matter for emulator testing, which Android Studio can still
+        // do via an arm64 (or Google APIs x86_64 with translation) emulator image, or by
+        // temporarily removing this filter. This only shrinks what's downloaded/installed - it
+        // changes nothing about which native code actually runs on-device, so photo processing
+        // itself is unaffected either way.
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
     }
 
     buildTypes {
@@ -45,6 +57,10 @@ dependencies {
 
 	// OpenCV
 	implementation 'com.quickbirdstudios:opencv:4.5.3.0'
+
+	// [REALCAMMI FORK LIBYUV 2026-10-04] libyuv (Google, BSD-3-Clause) through the crow-misia JNI wrapper
+	// (Apache-2.0). Used only by LibYuvScaler.java, which DepthEffect.java calls for box-filter downscaling.
+	implementation 'io.github.crow-misia.libyuv:libyuv-android:0.44.0'
 	
 	// Backend Utilities & Network Frameworks (Explicitly Versioned)
     implementation 'org.apache.commons:commons-lang3:3.20.0' 

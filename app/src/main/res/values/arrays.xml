@@ -605,6 +605,66 @@
         <item>2.6</item>
         <item>2.8</item>
     </string-array>
+    <!-- [REALCAMMI FORK 2026-09-02] Image Profile blend strength presets - entries/values kept
+         12-to-12 (verified equal length), per the lesson in the gamma-array bugfix comment above. -->
+    <string-array name="preference_image_profile_strength_entries">
+        <item>@string/preference_image_profile_strength_0</item>
+        <item>@string/preference_image_profile_strength_5</item>
+        <item>@string/preference_image_profile_strength_10</item>
+        <item>@string/preference_image_profile_strength_20</item>
+        <item>@string/preference_image_profile_strength_30</item>
+        <item>@string/preference_image_profile_strength_40</item>
+        <item>@string/preference_image_profile_strength_50</item>
+        <item>@string/preference_image_profile_strength_60</item>
+        <item>@string/preference_image_profile_strength_70</item>
+        <item>@string/preference_image_profile_strength_80</item>
+        <item>@string/preference_image_profile_strength_90</item>
+        <item>@string/preference_image_profile_strength_100</item>
+    </string-array>
+    <string-array name="preference_image_profile_strength_values">
+        <item>0</item>
+        <item>5</item>
+        <item>10</item>
+        <item>20</item>
+        <item>30</item>
+        <item>40</item>
+        <item>50</item>
+        <item>60</item>
+        <item>70</item>
+        <item>80</item>
+        <item>90</item>
+        <item>100</item>
+    </string-array>
+    <!-- [REALCAMMI FORK 2026-09-04] Sharpness (OpenCV) blend strength presets - entries/values
+         kept 12-to-12 (verified equal length). -->
+    <string-array name="preference_sharpness_strength_entries">
+        <item>@string/preference_sharpness_strength_0</item>
+        <item>@string/preference_sharpness_strength_5</item>
+        <item>@string/preference_sharpness_strength_10</item>
+        <item>@string/preference_sharpness_strength_20</item>
+        <item>@string/preference_sharpness_strength_30</item>
+        <item>@string/preference_sharpness_strength_40</item>
+        <item>@string/preference_sharpness_strength_50</item>
+        <item>@string/preference_sharpness_strength_60</item>
+        <item>@string/preference_sharpness_strength_70</item>
+        <item>@string/preference_sharpness_strength_80</item>
+        <item>@string/preference_sharpness_strength_90</item>
+        <item>@string/preference_sharpness_strength_100</item>
+    </string-array>
+    <string-array name="preference_sharpness_strength_values">
+        <item>0</item>
+        <item>5</item>
+        <item>10</item>
+        <item>20</item>
+        <item>30</item>
+        <item>40</item>
+        <item>50</item>
+        <item>60</item>
+        <item>70</item>
+        <item>80</item>
+        <item>90</item>
+        <item>100</item>
+    </string-array>
     <!-- [REALCAMMI FORK 2026-08-01] Depth Effect (bokeh) strength presets - see
          DepthEffect.setStrengthPreset(). Only "natural" is the on-device confirmed baseline
          (MAX_BLUR_SIGMA=6.0f, FALLOFF_SHARPNESS=1.25f from 2026-07-21); the other presets are
@@ -620,6 +680,21 @@
         <item>natural</item>
         <item>strong</item>
         <item>very_strong</item>
+    </string-array>
+    <!-- [REALCAMMI FORK] NR strength presets - see PostProcessing.applyOpenCVNRMat().
+         Only used when AI Scene Detection is off; when it's on, it overrides this and manages
+         strength itself. "light" is the previous hardcoded default. -->
+    <string-array name="preference_nr_strength_entries">
+        <item>@string/preference_nr_strength_lower_light</item>
+        <item>@string/preference_nr_strength_light</item>
+        <item>@string/preference_nr_strength_medium</item>
+        <item>@string/preference_nr_strength_strong</item>
+    </string-array>
+    <string-array name="preference_nr_strength_values">
+        <item>lower light</item>
+        <item>light</item>
+        <item>medium</item>
+        <item>strong</item>
     </string-array>
     <string-array name="preference_record_audio_src_entries">
         <item>@string/preference_record_audio_src_camcorder</item>

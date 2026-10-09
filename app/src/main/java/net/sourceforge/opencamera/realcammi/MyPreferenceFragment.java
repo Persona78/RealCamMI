@@ -1,18 +1,11 @@
 package net.sourceforge.opencamera.realcammi;
 
-import net.sourceforge.opencamera.realcammi.ui.FolderChooserDialog;
-import net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference;
-
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
-import androidx.fragment.app.DialogFragment;
-import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
-//import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.pm.PackageInfo;
@@ -21,20 +14,9 @@ import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Point;
-//import android.net.Uri;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
-import androidx.preference.DialogPreference;
-import androidx.preference.EditTextPreference;
-import androidx.preference.ListPreference;
-import androidx.preference.Preference;
-import androidx.preference.Preference.OnPreferenceChangeListener;
-import androidx.preference.Preference.OnPreferenceClickListener;
-import androidx.preference.PreferenceFragmentCompat;
-import androidx.preference.PreferenceGroup;
-import androidx.preference.PreferenceManager;
-import androidx.preference.TwoStatePreference;
 import android.text.Html;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -51,11 +33,30 @@ import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.fragment.app.DialogFragment;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.preference.DialogPreference;
+import androidx.preference.EditTextPreference;
+import androidx.preference.ListPreference;
+import androidx.preference.Preference;
+import androidx.preference.Preference.OnPreferenceChangeListener;
+import androidx.preference.Preference.OnPreferenceClickListener;
+import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.PreferenceGroup;
+import androidx.preference.PreferenceManager;
+import androidx.preference.TwoStatePreference;
+
+import net.sourceforge.opencamera.realcammi.ui.FolderChooserDialog;
+import net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+
+//import android.content.Intent;
+//import android.net.Uri;
 
 /** Fragment to handle the Settings UI. Note that originally this was a
  *  PreferenceActivity rather than a PreferenceFragment which required all
@@ -1116,13 +1117,34 @@ public class MyPreferenceFragment extends PreferenceFragmentCompat
                     pref.getKey().equals("preference_exif_copyright") ||
                     pref.getKey().equals("preference_save_photo_prefix") ||
                     pref.getKey().equals("preference_save_video_prefix") ||
-                    pref.getKey().equals("preference_textstamp")
+                    pref.getKey().equals("preference_textstamp") ||
+                    pref.getKey().equals("preference_extra_exposure_compensation") ||
+                    pref.getKey().equals("preference_color_boost_red_scale") ||
+                    pref.getKey().equals("preference_color_boost_green_scale") ||
+                    pref.getKey().equals("preference_color_boost_blue_scale") ||
+                    pref.getKey().equals("preference_color_boost_offset") ||
+                    pref.getKey().equals("preference_color_boost_saturation") ||
+                    pref.getKey().equals("preference_color_boost_hue")
             ) {
                 String default_value = "";
                 if( pref.getKey().equals("preference_save_photo_prefix") )
-                    default_value = "IMG_";
+                    default_value = "RLCI_";
                 else if( pref.getKey().equals("preference_save_video_prefix") )
-                    default_value = "VID_";
+                    default_value = "RLCV_";
+                else if( pref.getKey().equals("preference_extra_exposure_compensation") )
+                    default_value = "0";
+                else if( pref.getKey().equals("preference_color_boost_red_scale") )
+                    default_value = "0.000";
+                else if( pref.getKey().equals("preference_color_boost_green_scale") )
+                    default_value = "0.000";
+                else if( pref.getKey().equals("preference_color_boost_blue_scale") )
+                    default_value = "0.000";
+                else if( pref.getKey().equals("preference_color_boost_offset") )
+                    default_value = "0";
+                else if( pref.getKey().equals("preference_color_boost_saturation") )
+                    default_value = "1.0";
+                else if( pref.getKey().equals("preference_color_boost_hue") )
+                    default_value = "0";
 
                 String current_value;
                 if( pref instanceof EditTextPreference ) {
@@ -1150,6 +1172,27 @@ public class MyPreferenceFragment extends PreferenceFragmentCompat
                             break;
                         case "preference_textstamp":
                             pref.setSummary(R.string.preference_textstamp_summary);
+                            break;
+                        case "preference_extra_exposure_compensation":
+                            pref.setSummary(R.string.preference_extra_exposure_compensation_summary);
+                            break;
+                        case "preference_color_boost_red_scale":
+                            pref.setSummary(R.string.preference_color_boost_red_scale_summary);
+                            break;
+                        case "preference_color_boost_green_scale":
+                            pref.setSummary(R.string.preference_color_boost_green_scale_summary);
+                            break;
+                        case "preference_color_boost_blue_scale":
+                            pref.setSummary(R.string.preference_color_boost_blue_scale_summary);
+                            break;
+                        case "preference_color_boost_offset":
+                            pref.setSummary(R.string.preference_color_boost_offset_summary);
+                            break;
+                        case "preference_color_boost_saturation":
+                            pref.setSummary(R.string.preference_color_boost_saturation_summary);
+                            break;
+                        case "preference_color_boost_hue":
+                            pref.setSummary(R.string.preference_color_boost_hue_summary);
                             break;
                     }
                 }

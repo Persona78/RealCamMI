@@ -20,6 +20,7 @@ import androidx.exifinterface.media.ExifInterface;
 import net.sourceforge.opencamera.realcammi.MyDebug;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 
 
@@ -48,7 +49,47 @@ public class Camera2Settings {
     private Integer default_color_correction;
     boolean has_antibanding;
     int antibanding = CameraMetadata.CONTROL_AE_ANTIBANDING_MODE_AUTO;
-    Range<Integer> fpsDinamico = new Range <> (7,30);
+    // [REALCAMMI FIX 2026-09-15] Was: Range<Integer> fpsDinamico = new Range<>(15, 30); - a fixed
+    // value, applied only to still captures, that happened to work on this device but was never
+    // verified against what the sensor actually supports. Per the Camera2 API docs,
+    // CONTROL_AE_TARGET_FPS_RANGE must exactly match one of the ranges reported by
+    // CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES - an arbitrary pair is not
+    // guaranteed to be accepted. Replaced by getStillCaptureFpsRange() below, which picks from
+    // the device's own reported list (via CameraController2.getAeFpsRanges(), fed by that same
+    // characteristics key) instead of guessing.
+    private static final Range<Integer> FPS_RANGE_FALLBACK = new Range<>(15, 30);
+
+    // Picks the still-capture AE target FPS range from what this device actually reports as
+    // supported, rather than a hardcoded guess. Prefers the range with the lowest minimum fps
+    // whose maximum is still a reasonably smooth >=24fps - the lower the minimum, the longer an
+    // exposure time the AE routine is allowed to pick in low light, which is the whole point of
+    // this being configurable per-still rather than fixed. Falls back to the old hardcoded
+    // [15,30] only if the device's own list is unavailable or empty, so behaviour never regresses
+    // below what it was before this fix.
+    private Range<Integer> getStillCaptureFpsRange() {
+        if( camera_controller == null )
+            return FPS_RANGE_FALLBACK;
+        List<int[]> available = camera_controller.getAeFpsRanges();
+        if( available == null || available.isEmpty() )
+            return FPS_RANGE_FALLBACK;
+
+        int[] best = null;
+        for( int[] r : available ) {
+            if( r[1] < 24 )
+                continue; // skip ranges whose max fps is too low to be a usable still-capture default
+            if( best == null || r[0] < best[0] )
+                best = r;
+        }
+        if( best == null ) {
+            // Nothing had max fps >= 24 - fall back to whichever range has the widest span, so
+            // there's still some AE headroom rather than none.
+            for( int[] r : available ) {
+                if( best == null || (r[1] - r[0]) > (best[1] - best[0]) )
+                    best = r;
+            }
+        }
+        return ( best != null ) ? new Range<>(best[0], best[1]) : FPS_RANGE_FALLBACK;
+    }
     boolean has_edge_mode;
     int edge_mode = CameraMetadata.EDGE_MODE_FAST;
     private boolean has_default_edge_mode;
@@ -61,7 +102,7 @@ public class Camera2Settings {
     // Neutral light (3500K – 4500K)
     // Cool light (5000K – 6500K)
     // RealCamMI Default set to 5000
-    int white_balance_temperature = 6000; // used for white_balance == CONTROL_AWB_MODE_OFF
+    int white_balance_temperature = 6500; // used for white_balance == CONTROL_AWB_MODE_OFF
     String flash_value = "flash_off";
     boolean has_iso;
     //private int ae_mode = CameraMetadata.CONTROL_AE_MODE_ON;
@@ -71,7 +112,7 @@ public class Camera2Settings {
     boolean has_aperture;
     float aperture;
     // [REALCAMMI FORK] Android 11+ CONTROL_ZOOM_RATIO/SCALER_CROP_REGION still-capture zoom fix
-    // (see setControlZoomRatio() and setCropRegion() below; full rationale in CHANGES.md).
+    // (see setControlZoomRatio() and setCropRegion() below; rationale in README.md, "Zoom fix").
     boolean has_control_zoom_ratio = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R; // zoom for Android 11+
     float current_zoom_ratio = 1.0f;
     float control_zoom_ratio = 1.0f; // zoom for Android 11+
@@ -101,70 +142,17 @@ public class Camera2Settings {
     private final boolean is_samsung_s7; // Galaxy S7 or Galaxy S7 Edge
     // [REALCAMMI FORK] Xiaomi/Ulefone device fingerprinting — not present upstream, used by
     // setNoiseReductionMode()/setTonemapProfile() etc. to apply device-specific tuning below
-    private final boolean is_xiaomi;
-    private final boolean is_ulefone;
-
 
     Camera2Settings(CameraController2 camera_controller) {
         this.camera_controller = camera_controller;
+        this.characteristics = camera_controller.getCameraCharacteristics();
         this.is_samsung = Build.MANUFACTURER.toLowerCase(Locale.US).contains("samsung");
         String build_model = Build.MODEL.toLowerCase(Locale.US);
         this.is_samsung_s7 = build_model.contains("sm-g93");
 
-        // [REALCAMMI FORK] Device model/brand matching for Xiaomi Redmi Note 13 Pro 5G ("garnet")
-        // and Ulefone Armor 25T Pro — drives device-specific NR/Edge/tonemap behavior below
-        this.is_ulefone = Build.MANUFACTURER.toLowerCase(Locale.US).contains("ulefone") ||
-                Build.BRAND.toLowerCase(Locale.US).contains("ulefone") ||
-                Build.MODEL.contains("armor 25t pro") ||
-                Build.DEVICE.contains("gq5007af2_eea") ||
-                Build.MODEL.contains("armor 25t") ||
-                Build.DEVICE.contains("gq5007tf1");
-
-        this.is_xiaomi = Build.MANUFACTURER.toLowerCase(Locale.US).contains("xiaomi") ||
-                Build.BRAND.toLowerCase(Locale.US).contains("redmi") ||
-                // Redmi Note 14 series
-                Build.MODEL.contains("24116racc") ||  // Note 14 Pro
-                Build.MODEL.contains("24090ra29") ||  // Note 14 Pro 5G
-                Build.MODEL.contains("24115ra8e") ||  // Note 14 Pro+ 5G
-                Build.MODEL.contains("24117rn76") ||  // Note 14 5G
-                Build.MODEL.contains("24094raD4") ||  // Note 14 5G India
-                // Redmi Note 15 series
-                Build.MODEL.contains("kunzite") ||    // Note 15 5G
-                Build.MODEL.contains("lapis") ||      // Note 15 Pro 5G
-                Build.MODEL.contains("charoite") ||   // Note 15 Pro
-                Build.MODEL.contains("flourite") ||   // Note 15 Pro+ 5G
-                // Redmi Note 13
-                Build.DEVICE.contains("sapphire") ||
-                Build.MODEL.contains("23129raa4g") ||
-                Build.MODEL.contains("23129ra5fl") ||
-                // Redmi Note 13 4g nfc
-                Build.DEVICE.contains("sapphiren") ||
-                Build.MODEL.contains("23124ra7eo") ||
-                // Redmi 13C
-                Build.DEVICE.contains("gust") ||
-                Build.MODEL.contains("23108rn04y") ||
-                // Xiaomi 15T
-                Build.DEVICE.contains("goya") ||
-                Build.MODEL.contains("25069ptebg") ||
-                // Xiaomi 15T Pro
-                Build.DEVICE.contains("klimt") ||
-                Build.MODEL.contains("2506bpn68g") ||
-                Build.MODEL.contains("2506bpn68r") ||
-                // poco x6 5g
-                Build.DEVICE.contains("garnet") ||
-                Build.MODEL.contains("23122pcd1g") ||
-                Build.MODEL.contains("23122pcd1i") ||
-                // Redmi Note 13 Pro
-                Build.MODEL.contains("2312dra50c") ||
-                Build.MODEL.contains("2312dra50g") ||
-                Build.MODEL.contains("2312dra50i") ||
-                Build.MODEL.contains("2312crad3c");
-
         if( MyDebug.LOG ) {
             Log.d(TAG, "is_samsung: " + is_samsung);
             Log.d(TAG, "is_samsung_s7: " + is_samsung_s7);
-            Log.d(TAG, "is_xiaomi: " + is_xiaomi);
-            Log.d(TAG, "is_ulefone: " + is_ulefone);
         }
     }
 
@@ -203,6 +191,30 @@ public class Camera2Settings {
     // Tune 4
     @RequiresApi(api = Build.VERSION_CODES.R)
     void setupBuilder(CaptureRequest.Builder builder, boolean is_still) {
+        // Enforce maximum high-resolution sensor execution strictly if validated by hardware capabilities to prevent HAL capture rejections
+        if (is_still && builder != null) {
+            boolean supportsMaxRes = false;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && characteristics != null) {
+                int[] capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+                if (capabilities != null) {
+                    for (int cap : capabilities) {
+                        if (cap == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
+                            supportsMaxRes = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (supportsMaxRes && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                builder.set(CaptureRequest.SENSOR_PIXEL_MODE, CaptureRequest.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION);
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY);
+            }
+        }
+        // [REALCAMMI FORK] Removed: a hardcoded CONTROL_AE_TARGET_FPS_RANGE=
 
         // [REALCAMMI FORK] Removed: a hardcoded CONTROL_AE_TARGET_FPS_RANGE=[15,30] override used to be
         // forced here unconditionally. Removed because it contradicts this project's own documented
@@ -228,14 +240,14 @@ public class Camera2Settings {
                 && !has_iso
                 && !has_ae_exposure_compensation
                 && camera_controller.getCurrentSceneCategory() == net.sourceforge.opencamera.realcammi.SceneDetector.SceneCategory.EXTREME_BACKLIT ) {
-            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -2);
+            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -1);
         }
 
         // [REALCAMMI FORK] Corrects lens shading (corner color/luminance vignetting). Without this,
         // SHADING_MODE is left at the HAL default, which for third-party Camera2 requests on some
         // vendor HALs (observed: Qualcomm CamX / Xiaomi) can be weaker than the stock camera app's
         // own pipeline, showing up as a visible color blotch in a corner of the photo.
-        int optimalShadingMode = CameraMetadata.SHADING_MODE_FAST; // Standard safe fallback for all devices
+        /*int optimalShadingMode = CameraMetadata.SHADING_MODE_FAST; // Standard safe fallback for all devices
         if (characteristics != null) {
             int[] availableShadingModes = characteristics.get(CameraCharacteristics.SHADING_AVAILABLE_MODES);
             if (availableShadingModes != null) {
@@ -248,7 +260,7 @@ public class Camera2Settings {
                 }
             }
         }
-        builder.set(CaptureRequest.SHADING_MODE, optimalShadingMode);
+        builder.set(CaptureRequest.SHADING_MODE, optimalShadingMode);*/
 
         setSceneMode(builder);
         setColorEffect(builder);
@@ -275,11 +287,59 @@ public class Camera2Settings {
                 // where we do this using ExifInterface.setGpsInfo()).
                 builder.set(CaptureRequest.JPEG_GPS_LOCATION, location);
             }
+
             builder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
             builder.set(CaptureRequest.JPEG_QUALITY, jpeg_quality);
-            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, -1);
-            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fpsDinamico);
+            builder.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY);
+            builder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_HIGH_QUALITY);
+
+            // [REALCAMMI FORK 2026-08-31] User-configurable "Extra exposure compensation" - a
+            // fixed EV bias the user can dial in via Settings (GCam-style numeric field, see
+            // PreferenceKeys.ExtraExposureCompensationPreferenceKey), applied only to still
+            // captures. Guarded the same way as the backlit safety net above: never in manual ISO
+            // mode (has_iso - EV compensation has no meaning once exposure is fully manual, same
+            // reasoning as setExposureCompensation()'s own has_iso guard) and never inside an
+            // HDR/Night extension session (which manages its own exposure). Stacks on top of
+            // whatever setExposureCompensation() already set above, rather than replacing it, so
+            // a user's own manual EV adjustment and this extra bias combine additively. Default 0
+            // means no extra bias - a genuine no-op until the user edits the field.
+            if( !camera_controller.isExtensionSession() && !has_iso ) {
+                float extra_ev = camera_controller.getExtraExposureCompensationEV();
+                if( extra_ev != 0.0f ) {
+                    float exposure_step = camera_controller.getExposureCompensationStep();
+                    if( exposure_step > 0.0f ) {
+                        int extra_steps = Math.round(extra_ev / exposure_step);
+                        if( extra_steps != 0 ) {
+                            Integer current = builder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+                            int base_value = (current != null) ? current : 0;
+                            int new_value = base_value + extra_steps;
+                            new_value = Math.max(camera_controller.getMinimumExposureCompensation(), Math.min(camera_controller.getMaximumExposureCompensation(), new_value));
+                            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, new_value);
+                        }
+                    }
+                }
+            }
+
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, getStillCaptureFpsRange());
+
+
+            // Disabled because it caused very dark photos in low-light environments.
+            /* // Validate hardware support for Low Light Boost before deployment to prevent HAL capture crashes
+            int desiredAeMode = CameraMetadata.CONTROL_AE_MODE_ON;
+            if (characteristics != null) {
+                int[] availableAeModes = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
+                if (availableAeModes != null) {
+                    for (int mode : availableAeModes) {
+                        if (mode == CameraMetadata.CONTROL_AE_MODE_ON_LOW_LIGHT_BOOST_BRIGHTNESS_PRIORITY) {
+                            desiredAeMode = mode;
+                            break;
+                        }
+                    }
+                }
+            }
+            builder.set(CaptureRequest.CONTROL_AE_MODE, desiredAeMode);*/
+
+            /*builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST);*/
 
 
         }
@@ -299,48 +359,15 @@ public class Camera2Settings {
         // its own comment already claimed.
         setTonemapProfile(builder);
 
-            /*builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-            builder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
-            builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
-
-            /*builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
-            builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-            if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
-                builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_GAMMA_VALUE);
-                builder.set(CaptureRequest.TONEMAP_GAMMA, 5.0f);
-            }*/
-            /*if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ) {
-                // Setting the value to zero (or the hardware's default minimum value) tells the camera not to apply any post-RAW digital gain.
-                builder.set(CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST, 0);
-            }*/
-            /*builder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
-            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
-            builder.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
-            builder.set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_DISABLED);
-            builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_HIGH_QUALITY);
-            builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-            builder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
-            builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);*/
-
-            /*if( MyDebug.LOG ) {
-                builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY);
-                TonemapCurve original_curve = builder.get(CaptureRequest.TONEMAP_CURVE);
-                for(int c=0;c<3;c++) {
-                    Log.d(TAG, "color c = " + c);
-                    for(int i=0;i<original_curve.getPointCount(c);i++) {
-                        PointF point = original_curve.getPoint(c, i);
-                        Log.d(TAG, "    i = " + i);
-                        Log.d(TAG, "        in: " + point.x);
-                        Log.d(TAG, "        out: " + point.y);
-                    }
-                }
-            }*/
-            /*if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
-                builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_PRESET_CURVE);
-                builder.set(CaptureRequest.TONEMAP_PRESET_CURVE, CaptureRequest.TONEMAP_PRESET_CURVE_SRGB);
-            }*/
+        // [REALCAMMI FIX 2026-09-15] Removed ~45 lines of dead, commented-out experimental
+        // CaptureRequest settings that lived here (SHADING_MODE_OFF, EDGE_MODE_OFF,
+        // NOISE_REDUCTION_MODE_OFF, COLOR_CORRECTION_ABERRATION_MODE_*, TONEMAP_MODE debug
+        // dumps, etc., repeated across several never-executed blocks). None of it ever ran, and
+        // several of the commented values directly contradicted what's actively set just above
+        // (e.g. a commented SHADING_MODE_OFF right after the real SHADING_MODE_HIGH_QUALITY, and
+        // commented EDGE_MODE_OFF/NOISE_REDUCTION_MODE_OFF conflicting with setEdgeMode()/
+        // setNoiseReductionMode() below) - confusing for anyone reading this method, with no
+        // behavioural effect either way. Removed rather than left as reference.
 
         if( MyDebug.LOG ) {
             if( is_still ) {
@@ -425,27 +452,52 @@ public class Camera2Settings {
     // =====================================================================================
     // [REALCAMMI FORK] Manual white balance / color correction constants, applied via
     // COLOR_CORRECTION_GAINS/TRANSFORM below when AWB is OFF or during a vendor Extension
-    // session (see setWhiteBalance()). User-tuned, still being iterated on/re-tested -
-    // not a final calibration.
+    // session (see setWhiteBalance()) - in practice, on this device, that almost always means
+    // the vendor's native Night Mode extension, since manual (AWB_MODE_OFF) white balance is a
+    // niche user-selected setting.
     // =====================================================================================
     // 3x3 color correction matrix (CCM), passed to the Camera2 API as a COLOR_CORRECTION_TRANSFORM.
     // Each row sums to Rational(100,100) = 1.0, so overall channel energy/white point is
     // preserved. Near-identity with small cross-channel terms: RED = 98% of its own signal +
     // 2% bled in from BLUE; GREEN = 98% of its own signal + 2% bled in from RED; BLUE passes
     // through unchanged (100%, no cross-channel term).
+    // [REALCAMMI FIX 2026-09-16] The values below were previously a pure identity matrix
+    // (100/0/0, 0/100/0, 0/0/100 - no cross-channel terms at all), contradicting this exact
+    // comment describing a 98%/2% blend. Corrected to match. This near-identity strength (rather
+    // than a stronger daylight-style CCM) is also the technically appropriate choice for Night
+    // Mode specifically: ISP tuning literature on CCM calibration confirms that a lower-strength/
+    // more-desaturated CCM has a lower condition number and amplifies chroma noise less under low
+    // signal-to-noise ratio - exactly the Night Mode/high-gain situation this matrix is used in -
+    // whereas a full-strength CCM tuned for good-light SNR would amplify colour noise when reused
+    // at night. (Sources: "Denoising images with a color matrix pyramid", US patent 9049334, on
+    // CCM desaturation reducing chroma noise amplification; and "Method and apparatus for
+    // improving image quality in digital cameras", US patent 6822657, on selecting a
+    // lower-saturation CCM as SNR drops.)
     // Tune 1
     private static final Rational[] REALCAMMI_MATRIX_ELEMENTS = new Rational[] {
-            new Rational(102, 100), new Rational(-2, 100),  new Rational(0, 100), // RED Row   (101 - 1 + 0 = 100)
-            new Rational(0, 100),  new Rational(102, 100), new Rational(-2, 100), // GREEN Row (0 + 101 - 1 = 100)
-            new Rational(-2, 100),  new Rational(0, 100),  new Rational(102, 100) // BLUE Row  (-1 + 0 + 101 = 100)
+            new Rational(98, 100), new Rational(0, 100),  new Rational(2, 100), // RED Row   (98 + 0 + 2 = 100)
+            new Rational(2, 100),  new Rational(98, 100), new Rational(0, 100), // GREEN Row (2 + 98 + 0 = 100)
+            new Rational(0, 100),  new Rational(0, 100),  new Rational(100, 100) // BLUE Row  (0 + 0 + 100 = 100)
     };
     private static final ColorSpaceTransform REALCAMMI_COLOR_TRANSFORM = new ColorSpaceTransform(REALCAMMI_MATRIX_ELEMENTS);
+
+    // [REALCAMMI FIX 2026-09-16] Was a hardcoded local "float saturationFactor = 1.0f;" inside
+    // setWhiteBalance() below (a no-op, and undocumented as to why 1.0 specifically, or why it
+    // was a variable at all if never changed). Named and given a real starting value instead:
+    // per the same low-SNR/chroma-noise-amplification sources cited above PRO_COLOR_MATRIX,
+    // pulling the white-balance gain spread in slightly (< 1.0) reduces how much the manual
+    // COLOR_CORRECTION_GAINS below can amplify colour noise at the high sensor gains Night Mode
+    // runs at. 0.90 is a conservative starting point (a ~10% pull-back on the gain spread, not a
+    // precise calibration - that would need on-device SNR measurements this fork doesn't have) -
+    // still user-tunable/re-testable like the CCM above, not a final value.
+    private static final float NIGHT_MODE_SATURATION_FACTOR = 0.90f;
 
     /**
      * Sets CONTROL_AWB_MODE on the capture request. When white balance is manual
      * (AWB_MODE_OFF) or the current session is a vendor Camera2 Extension session (e.g.
      * Xiaomi's native Night Mode), also applies this fork's manual COLOR_CORRECTION_GAINS
-     * and COLOR_CORRECTION_TRANSFORM (see REALCAMMI_MATRIX_ELEMENTS/saturationFactor below) -
+     * and COLOR_CORRECTION_TRANSFORM (see REALCAMMI_MATRIX_ELEMENTS/NIGHT_MODE_SATURATION_FACTOR
+     * below) -
      * under AWB_MODE=AUTO the Camera2 API spec has the HAL ignore those fields (see the
      * AWB inversion bugfix note elsewhere in this file), so this only has an effect in those
      * two cases.
@@ -489,14 +541,14 @@ public class Camera2Settings {
             // gain vector.
             RggbChannelVector temperatureVector = CameraController2.convertTemperatureToRggbVector(white_balance_temperature);
 
-            // Scales the temperature-derived gains by saturationFactor, then clamps each
-            // channel to [1.0, 4.0] - the typical valid COLOR_CORRECTION_GAINS range on most
-            // devices - so an out-of-range gain is never sent to the HAL.
-            float saturationFactor = 1.4f;
-            float finalRed = Math.min(Math.max(temperatureVector.getRed() * saturationFactor, 1.0f), 4.0f);
-            float finalGe = Math.min(Math.max(temperatureVector.getGreenEven() * saturationFactor, 1.0f), 4.0f);
-            float finalGo = Math.min(Math.max(temperatureVector.getGreenOdd() * saturationFactor, 1.0f), 4.0f);
-            float finalBlue = Math.min(Math.max(temperatureVector.getBlue() * saturationFactor, 1.0f), 4.0f);
+            // Scales the temperature-derived gains by NIGHT_MODE_SATURATION_FACTOR (see its
+            // comment above), then clamps each channel to [1.0, 4.0] - the typical valid
+            // COLOR_CORRECTION_GAINS range on most devices - so an out-of-range gain is never
+            // sent to the HAL.
+            float finalRed = Math.min(Math.max(temperatureVector.getRed() * NIGHT_MODE_SATURATION_FACTOR, 1.0f), 4.0f);
+            float finalGe = Math.min(Math.max(temperatureVector.getGreenEven() * NIGHT_MODE_SATURATION_FACTOR, 1.0f), 4.0f);
+            float finalGo = Math.min(Math.max(temperatureVector.getGreenOdd() * NIGHT_MODE_SATURATION_FACTOR, 1.0f), 4.0f);
+            float finalBlue = Math.min(Math.max(temperatureVector.getBlue() * NIGHT_MODE_SATURATION_FACTOR, 1.0f), 4.0f);
 
             RggbChannelVector combinedGains = new RggbChannelVector(finalRed, finalGe, finalGo, finalBlue);
 
@@ -660,17 +712,6 @@ public class Camera2Settings {
             builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
         }
 
-        else if( is_ulefone || is_xiaomi ) {
-            if( MyDebug.LOG )
-                Log.d(TAG, "set NOISE_REDUCTION_MODE_MINIMAL (xiaomi/ulefone)");
-            // [REALCAMMI FORK] Without this, the CamX HAL would default to whatever the still-capture
-            // template picks (potentially HIGH_QUALITY), stacking with the app's own bilateral NR.
-            // MINIMAL retains hot-pixel correction (relevant for the 200MP HP3 sensor at high ISO)
-            // and leaves all luminance/chroma smoothing to the bilateral filter tunable in
-            // PostProcessing.java.
-            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL);
-        }
-
         else if( has_default_noise_reduction_mode ) {
             if( builder.get(CaptureRequest.NOISE_REDUCTION_MODE) != null && !builder.get(CaptureRequest.NOISE_REDUCTION_MODE).equals(default_noise_reduction_mode)) {
                 builder.set(CaptureRequest.NOISE_REDUCTION_MODE, default_noise_reduction_mode);
@@ -794,6 +835,43 @@ public class Camera2Settings {
                     builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
                     builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF);
                     break;
+            }
+
+            // [REALCAMMI FORK 2026-09-19] Garnet-only, video-only override, requested by the
+            // author to address a separately-documented issue: Garnet video is slightly brighter
+            // than it should be. This AE mode (CONTROL_AE_MODE_ON_LOW_LIGHT_BOOST_BRIGHTNESS_
+            // PRIORITY) is an Android 15+ (VANILLA_ICE_CREAM) platform constant for HAL-driven
+            // multi-frame low-light brightness boosting - by its own name and documented intent,
+            // it should make output *brighter* in low light, not dimmer.
+            //
+            // This is the same AAvailableAeModes-validated lookup as the disabled block that
+            // used to sit in setupBuilder() above (see PostProcessing.java/README history for
+            // "caused very dark photos in low-light environments") - but that attempt was, on
+            // inspection, scoped only to STILL captures (it lived inside setupBuilder()'s
+            // is_still block) and was never actually exercised for video at all. Whether this
+            // mode behaves the same way on Garnet's video pipeline as it apparently did on its
+            // still-capture pipeline is unverified - it is applied here on the (unconfirmed)
+            // hypothesis that the same HAL quirk that darkened stills might correct video's
+            // documented over-brightness instead. Skipped when flash_torch is explicitly
+            // selected, so the user's own explicit torch choice is never overridden.
+            //
+            // TEST CAREFULLY: if Garnet video comes out too dark (mirroring the still-capture
+            // experience) rather than correctly less-bright, revert by deleting this block - nothing
+            // else in the file depends on it.
+            if( !is_still && Build.DEVICE.contains("garnet")
+                    && Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+                    && characteristics != null ) {
+                int[] available_ae_modes = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES);
+                if( available_ae_modes != null ) {
+                    for( int mode : available_ae_modes ) {
+                        if( mode == CameraMetadata.CONTROL_AE_MODE_ON_LOW_LIGHT_BOOST_BRIGHTNESS_PRIORITY ) {
+                            if( MyDebug.LOG )
+                                Log.d(TAG, "Garnet video: using CONTROL_AE_MODE_ON_LOW_LIGHT_BOOST_BRIGHTNESS_PRIORITY");
+                            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_LOW_LIGHT_BOOST_BRIGHTNESS_PRIORITY);
+                            break;
+                        }
+                    }
+                }
             }
         }
         return true;
@@ -1047,7 +1125,7 @@ public class Camera2Settings {
         // tonemap curve during photo preview/capture. Rather than fight the HAL's AE, photo
         // mode now always captures in the native/Standard tonemap (exactly like Standard,
         // proven stable), and the chosen profile's curve is instead applied to the bitmap
-        // after capture, in PostProcessing.applyImageProfile(). Video keeps using the live
+        // after capture, in PostProcessing.applyImageProfileMat(). Video keeps using the live
         // TONEMAP_MODE below, since that path is confirmed stable.
         if( have_tonemap_profile && !camera_controller.getPreviewIsVideoMode() ) {
             if( MyDebug.LOG )

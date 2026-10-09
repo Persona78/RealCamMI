@@ -16,6 +16,8 @@ import net.sourceforge.opencamera.realcammi.MyDebug;
 import net.sourceforge.opencamera.realcammi.PreferenceKeys;
 import net.sourceforge.opencamera.realcammi.R;
 import net.sourceforge.opencamera.realcammi.ToastBoxer;
+// [REALCAMMI FORK 2026-08-31] Needed for CameraController.MeteringMode
+import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
 import net.sourceforge.opencamera.realcammi.preview.ApplicationInterface;
 
 import java.util.Arrays;
@@ -38,6 +40,8 @@ public class OnScreenIcons {
     private final MainActivity main_activity;
 
     private final ToastBoxer exposure_lock_toast = new ToastBoxer();
+    // [REALCAMMI FORK 2026-08-31] Metering mode selector toast
+    private final ToastBoxer metering_mode_toast = new ToastBoxer();
     private final ToastBoxer white_balance_lock_toast = new ToastBoxer();
     private final ToastBoxer store_location_toast = new ToastBoxer();
     private final ToastBoxer stamp_toast = new ToastBoxer();
@@ -62,6 +66,8 @@ public class OnScreenIcons {
     void addOnScreenIcons(List<View> buttons) {
         buttons.add(main_activity.findViewById(R.id.exposure_lock));
         buttons.add(main_activity.findViewById(R.id.white_balance_lock));
+        // [REALCAMMI FORK 2026-08-31] Metering mode selector button
+        buttons.add(main_activity.findViewById(R.id.metering_mode));
         buttons.add(main_activity.findViewById(R.id.cycle_raw));
         buttons.add(main_activity.findViewById(R.id.store_location));
         buttons.add(main_activity.findViewById(R.id.text_stamp));
@@ -86,6 +92,8 @@ public class OnScreenIcons {
             Log.d(TAG, "updateOnScreenIcons");
         this.updateExposureLockIcon();
         this.updateWhiteBalanceLockIcon();
+        // [REALCAMMI FORK 2026-08-31] Metering mode selector icon
+        this.updateMeteringModeIcon();
         this.updateCycleRawIcon();
         this.updateStoreLocationIcon();
         this.updateTextStampIcon();
@@ -116,6 +124,48 @@ public class OnScreenIcons {
         boolean enabled = main_activity.getPreview().isWhiteBalanceLocked();
         view.setImageResource(enabled ? R.drawable.white_balance_locked : R.drawable.white_balance_unlocked);
         view.setContentDescription( main_activity.getResources().getString(enabled ? R.string.white_balance_unlock : R.string.white_balance_lock) );
+    }
+
+    /** [REALCAMMI FORK 2026-08-31] Metering mode selector (Matrix/Center-weighted/Spot). */
+    private void updateMeteringModeIcon() {
+        ImageButton view = main_activity.findViewById(R.id.metering_mode);
+        CameraController.MeteringMode mode = main_activity.getPreview().getMeteringMode();
+        int drawable_id;
+        int description_id;
+        if( mode == CameraController.MeteringMode.METERING_MODE_CENTER_WEIGHTED ) {
+            drawable_id = R.drawable.metering_center_weighted;
+            description_id = R.string.metering_mode_center_weighted;
+        }
+        else if( mode == CameraController.MeteringMode.METERING_MODE_SPOT ) {
+            drawable_id = R.drawable.metering_spot;
+            description_id = R.string.metering_mode_spot;
+        }
+        else {
+            drawable_id = R.drawable.metering_matrix;
+            description_id = R.string.metering_mode_matrix;
+        }
+        view.setImageResource(drawable_id);
+        view.setContentDescription( main_activity.getResources().getString(description_id) );
+    }
+
+    public void clickedMeteringMode() {
+        if( MyDebug.LOG )
+            Log.d(TAG, "clickedMeteringMode");
+        main_activity.getPreview().toggleMeteringMode();
+        this.updateMeteringModeIcon();
+        CameraController.MeteringMode mode = main_activity.getPreview().getMeteringMode();
+        int toast_id = mode == CameraController.MeteringMode.METERING_MODE_CENTER_WEIGHTED ? R.string.metering_mode_center_weighted :
+                mode == CameraController.MeteringMode.METERING_MODE_SPOT ? R.string.metering_mode_spot :
+                        R.string.metering_mode_matrix;
+        main_activity.getPreview().showToast(metering_mode_toast, toast_id, true);
+    }
+
+    /** [REALCAMMI FORK 2026-08-31] No dedicated user-facing "show this icon" preference - only
+     *  gated on camera capability, following showExposureLockIcon()'s pattern below.
+     */
+    private boolean showMeteringModeIcon() {
+        return main_activity.getPreview().getCameraController() != null
+                && main_activity.getPreview().getCameraController().supportsMetering();
     }
 
     private void updateCycleRawIcon() {
@@ -294,6 +344,8 @@ public class OnScreenIcons {
     void setVisibility(int visibility, int visibility_video) {
         View exposureLockButton = main_activity.findViewById(R.id.exposure_lock);
         View whiteBalanceLockButton = main_activity.findViewById(R.id.white_balance_lock);
+        // [REALCAMMI FORK 2026-08-31] Metering mode selector button
+        View meteringModeButton = main_activity.findViewById(R.id.metering_mode);
         View cycleRawButton = main_activity.findViewById(R.id.cycle_raw);
         View storeLocationButton = main_activity.findViewById(R.id.store_location);
         View textStampButton = main_activity.findViewById(R.id.text_stamp);
@@ -316,6 +368,9 @@ public class OnScreenIcons {
             exposureLockButton.setVisibility(visibility_video); // still allow exposure lock when recording video
         if( showWhiteBalanceLockIcon() )
             whiteBalanceLockButton.setVisibility(visibility_video); // still allow white balance lock when recording video
+        // [REALCAMMI FORK 2026-08-31] Metering mode selector button
+        if( showMeteringModeIcon() )
+            meteringModeButton.setVisibility(visibility);
         if( showCycleRawIcon() )
             cycleRawButton.setVisibility(visibility);
         if( showStoreLocationIcon() )
@@ -372,6 +427,12 @@ public class OnScreenIcons {
         }
         if( !showWhiteBalanceLockIcon() ) {
             View button = main_activity.findViewById(R.id.white_balance_lock);
+            changed = changed || (button.getVisibility() != View.GONE);
+            button.setVisibility(View.GONE);
+        }
+        // [REALCAMMI FORK 2026-08-31] Metering mode selector button
+        if( !showMeteringModeIcon() ) {
+            View button = main_activity.findViewById(R.id.metering_mode);
             changed = changed || (button.getVisibility() != View.GONE);
             button.setVisibility(View.GONE);
         }

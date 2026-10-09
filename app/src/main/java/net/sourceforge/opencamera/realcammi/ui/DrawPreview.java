@@ -754,7 +754,14 @@ public class DrawPreview {
         ghost_image_alpha = applicationInterface.getGhostImageAlpha();
 
         String histogram_pref = sharedPreferences.getString(PreferenceKeys.HistogramPreferenceKey, "preference_histogram_off");
-        want_histogram = !histogram_pref.equals("preference_histogram_off") && main_activity.supportsPreviewBitmaps();
+        // [REALCAMMI FORK 2026-08-31] Auto-enable the histogram whenever manual ISO mode is active
+        // (Huawei/Samsung/Xiaomi Pro-mode-style behaviour), regardless of the user's stored
+        // histogram_pref - this only affects the runtime want_histogram flag below, never the
+        // stored preference itself, so returning to Auto ISO reverts to whatever the user had
+        // chosen before.
+        String iso_value = sharedPreferences.getString(PreferenceKeys.ISOPreferenceKey, CameraController.ISO_DEFAULT);
+        boolean is_manual_iso_mode = !iso_value.equals(CameraController.ISO_DEFAULT);
+        want_histogram = ( !histogram_pref.equals("preference_histogram_off") || is_manual_iso_mode ) && main_activity.supportsPreviewBitmaps();
         histogram_type = Preview.HistogramType.HISTOGRAM_TYPE_VALUE;
         if( want_histogram ) {
             switch( histogram_pref ) {
@@ -1787,6 +1794,72 @@ public class DrawPreview {
                     else {
                         p.setColor(Color.argb(192, 255, 255, 255));
                         drawHistogramChannel(canvas, histogram, max);
+                    }
+
+                    // [REALCAMMI FORK 2026-08-31] Exposure clipping warning (Huawei Pro-mode-inspired
+                    // "blinkies"), reuses the histogram data already computed above - no extra
+                    // HAL/CPU cost. A channel is flagged as clipped once more than
+                    // clip_warning_threshold of its pixels fall within the outermost clip_bins
+                    // bins (0-255 scale). For an RGB histogram we check each channel separately
+                    // and flag on the worst offender, since a single blown channel (e.g. red) is
+                    // a real clipping problem even when the others look fine.
+                    final int clip_bins = 3; // outermost bins checked: 0-2 (shadows) and 253-255 (highlights)
+                    final float clip_warning_threshold = 0.01f; // warn once clipped pixels exceed 1% of the channel
+                    boolean shadow_clipped = false;
+                    boolean highlight_clipped = false;
+                    if( histogram.length == 256*3 ) {
+                        for(int channel=0;channel<3;channel++) {
+                            int channel_offset = channel*256;
+                            long channel_total = 0;
+                            long channel_shadow_clip = 0;
+                            long channel_highlight_clip = 0;
+                            for(int i=0;i<256;i++) {
+                                int count = histogram[channel_offset+i];
+                                channel_total += count;
+                                if( i < clip_bins )
+                                    channel_shadow_clip += count;
+                                else if( i >= 256-clip_bins )
+                                    channel_highlight_clip += count;
+                            }
+                            if( channel_total > 0 ) {
+                                if( channel_shadow_clip / (float)channel_total > clip_warning_threshold )
+                                    shadow_clipped = true;
+                                if( channel_highlight_clip / (float)channel_total > clip_warning_threshold )
+                                    highlight_clipped = true;
+                            }
+                        }
+                    }
+                    else {
+                        long total = 0;
+                        long shadow_clip = 0;
+                        long highlight_clip = 0;
+                        for(int i=0;i<histogram.length;i++) {
+                            int count = histogram[i];
+                            total += count;
+                            if( i < clip_bins )
+                                shadow_clip += count;
+                            else if( i >= histogram.length-clip_bins )
+                                highlight_clip += count;
+                        }
+                        if( total > 0 ) {
+                            if( shadow_clip / (float)total > clip_warning_threshold )
+                                shadow_clipped = true;
+                            if( highlight_clip / (float)total > clip_warning_threshold )
+                                highlight_clipped = true;
+                        }
+                    }
+
+                    if( shadow_clipped || highlight_clipped ) {
+                        String clip_warning_text = ( shadow_clipped && highlight_clipped ) ?
+                                getContext().getResources().getString(R.string.exposure_clipping_both) :
+                                shadow_clipped ?
+                                        getContext().getResources().getString(R.string.exposure_clipping_shadows) :
+                                        getContext().getResources().getString(R.string.exposure_clipping_highlights);
+                        p.setTextSize(14 * scale_font + 0.5f); // convert dps to pixels
+                        int clip_warning_y = icon_dest.bottom + (int)(4 * scale_dp + 0.5f);
+                        applicationInterface.drawTextWithBackground(canvas, p, clip_warning_text, Color.YELLOW, Color.BLACK,
+                                location_x2 - flash_padding, clip_warning_y,
+                                MyApplicationInterface.Alignment.ALIGNMENT_TOP, ybounds_text, MyApplicationInterface.Shadow.SHADOW_OUTLINE);
                     }
                 }
             }

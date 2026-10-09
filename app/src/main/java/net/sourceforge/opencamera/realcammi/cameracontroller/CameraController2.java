@@ -1,28 +1,8 @@
 package net.sourceforge.opencamera.realcammi.cameracontroller;
 
-import net.sourceforge.opencamera.realcammi.HDRProcessor;
-import net.sourceforge.opencamera.realcammi.MyDebug;
-import net.sourceforge.opencamera.realcammi.SceneDetector;
-import net.sourceforge.opencamera.realcammi.preview.ApplicationInterface;
-
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Hashtable;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.Executor;
-
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.content.SharedPreferences;
 import android.graphics.ImageFormat;
 import android.graphics.Point;
 import android.graphics.Rect;
@@ -44,7 +24,6 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.Capability;
 import android.hardware.camera2.params.DynamicRangeProfiles;
 import android.hardware.camera2.params.ExtensionSessionConfiguration;
-import android.hardware.camera2.params.Face;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.RggbChannelVector;
@@ -53,8 +32,6 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.hardware.camera2.params.TonemapCurve;
 import android.location.Location;
 import android.media.AudioManager;
-
-import androidx.annotation.IntRange;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaActionSound;
@@ -62,12 +39,9 @@ import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
-import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Range;
-import android.util.Size;
 import android.util.SizeF;
 import android.view.Display;
 import android.view.Surface;
@@ -75,49 +49,35 @@ import android.view.SurfaceHolder;
 import android.view.TextureView;
 import android.view.WindowMetrics;
 
+import androidx.annotation.IntRange;
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
+import androidx.preference.PreferenceManager;
+
+import net.sourceforge.opencamera.realcammi.HDRProcessor;
+import net.sourceforge.opencamera.realcammi.MyDebug;
+import net.sourceforge.opencamera.realcammi.PreferenceKeys;
+import net.sourceforge.opencamera.realcammi.SceneDetector;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Hashtable;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.Executor;
+
 
 /** Provides support using Android 5's Camera 2 API
  *  android.hardware.camera2.*.
  */
 public class CameraController2 extends CameraController {
     private static final String TAG = "CameraController2";
-
-    // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item B] Caches the already-decoded, already-cropped
-    // Bitmap produced by the software zoom-crop workaround below (see the crop block inside
-    // OnImageAvailableListener.onImageAvailable()), keyed by exact reference (not content) of the
-    // final compressed byte[] handed onward to the rest of the capture pipeline. When zoom is
-    // active AND any post-processing runs afterwards, PostProcessing.postProcessBitmap() would
-    // otherwise decode this exact JPEG a second time from scratch in ImageSaver.java - a fully
-    // redundant decode of an image that was already in memory moments earlier as croppedBitmap.
-    // ImageSaver.java checks this cache before decoding "data" itself; if the byte[] reference
-    // doesn't match exactly (e.g. burst mode reusing/reassigning arrays, or any other code path
-    // that doesn't go through this exact crop block), it always falls back to the normal decode
-    // path unchanged - a cache miss can never produce a wrong result, only a missed optimisation.
-    public static class LastCroppedBitmapCache {
-        private static byte[] cached_data;
-        private static Bitmap cached_bitmap;
-
-        public static synchronized void put(byte[] data, Bitmap bitmap) {
-            cached_data = data;
-            cached_bitmap = bitmap;
-        }
-
-        /** Returns the cached bitmap only if data is the exact same array reference that was
-         *  passed to put() - reference identity (==), not content equality, so two captures
-         *  that happened to produce byte-identical JPEGs could never be confused with each
-         *  other. Clears the cache entry on a hit (whether taken or not applicable), so a
-         *  stale bitmap can never be handed out twice or reused for a different data array.
-         */
-        public static synchronized Bitmap takeIfMatches(byte[] data) {
-            if( data == cached_data && cached_bitmap != null ) {
-                Bitmap result = cached_bitmap;
-                cached_data = null;
-                cached_bitmap = null;
-                return result;
-            }
-            return null;
-        }
-    }
 
     private final Context context;
     // Whether activity is paused - although the camera should be released when the app is paused,
@@ -139,7 +99,12 @@ public class CameraController2 extends CameraController {
     private String cameraIdS;
     private final String cameraIdSPhysical; // if non-null, ID string of underlying physical camera
 
-    // [REALCAMMI FORK] Tracks the physical lens selected via switchLens() — no upstream equivalent
+    // [REALCAMMI FORK] Physical lens override used when building the capture session/outputs.
+    // [REALCAMMI CLEANUP 2026-10-07] The switchLens() method that used to set this (and its helpers
+    // isHiddenCameraId()/findLogicalParentForPhysicalId()) had no callers and was removed, so this
+    // is currently always null and the branches that test it are inactive. Physical sub-cameras are
+    // reached through the camera ID list instead (see CameraControllerManager2). Kept as the hook
+    // for a future in-app lens switcher.
     private String selectedPhysicalCameraId = null;
 
     private final boolean is_samsung;
@@ -149,6 +114,15 @@ public class CameraController2 extends CameraController {
     // [REALCAMMI FORK] Device fingerprinting fields, not present upstream — assigned in constructor below
     private final boolean is_xiaomi;
     private final boolean is_ulefone;
+    // [REALCAMMI FORK 2026-09-19] Dedicated fingerprint for this one specific device codename
+    // ("garnet" - the fork's primary target hardware, sold as both the Redmi Note 13 Pro 5G and
+    // the POCO X6 5G in different markets/regions; same physical device, same codename either
+    // way). Deliberately separate from is_xiaomi above, which is a broad OR-chain covering many
+    // different Xiaomi devices (goya, klimt, garnet, and various Redmi Note 13 Pro model number
+    // variants, among others) - a change that should only apply to this one specific device must
+    // not accidentally apply to every Xiaomi device this fork has ever added a quirk-workaround
+    // for.
+    private final boolean is_garnet;
     private final boolean block_vendor_extensions; // block specific devices that take ages or cause ANR in CameraExtensionCharacteristics.getSupportedExtensions()
 
     // characteristics of camera - if a specific physical camera is being used, these are characteristics for the physical camera
@@ -178,15 +152,16 @@ public class CameraController2 extends CameraController {
     private boolean supports_tonemap_preset_curve; //private boolean supports_low_light_boost;
 
     // [REALCAMMI FORK] Minimum tonemap curve points required to support our custom profiles.
-    // Our curves (jtvideo=18, jtlog=17, jtlog2=18 points) need at least 18 points.
+    // Our curves (jtvideo=18, jtlog=17, jtlog2=18 points) need at least 18 points; the threshold
+    // is set to 64 (the common hardware value is 64 or 128), so only devices exposing at least
+    // 64 curve points are offered the custom profiles. (Upstream value: 128.)
     final static int tonemap_log_max_curve_points_c = 64;
-    // typically is set to 64 or 128.
 
     // [REALCAMMI FORK] The following three tonemap curve arrays (jtvideo, jtlog, jtlog2)
     // are additions specific to this fork and do not exist in upstream Open Camera.
     // They were hand-tuned against real hardware (Ulefone Armor 25T, Xiaomi, Redmi Note 13 Pro 5G)
     // to produce more realistic color/tone output than the device defaults.
-    // See README.md "Custom tone curves" for full rationale.
+    // See README.md section "Custom tonemap curve profiles" for the rationale.
     // When merging upstream changes to CameraController2.java, preserve this block.
     //Tune 8
     // [REALCAMMI FORK] public (not private) so PostProcessing.getResolvedImageProfileCurve()
@@ -303,24 +278,16 @@ public class CameraController2 extends CameraController {
     private AutoFocusCallback autofocus_cb;
     // Safe, industry-standard maximum focus sweep timeout
 
-    // 1000 or 1500 (Fast Focusing / Action Photography)
+    // 500, 1000 or 1500 (Fast Focusing / Action Photography)
     // 2000 or 2500 (Recommended for Video/General)
-    private long autofocus_time_ms = 1800L;
-    private long autofocus_start_time_ms = -1L;  // time we set autofocus_cb to non-null
+    private long autofocus_time_ms = 800L;
 
-    public long getAutofocus_start_time_ms() {
-        return autofocus_start_time_ms;
-    }
-    public void setAutofocus_start_time_ms(long autofocus_start_time_ms) {
-        this.autofocus_start_time_ms = autofocus_start_time_ms;
-    }
-
-    /* most camera apps (including RealCamMI's own defaults) use somewhere between 2500ms and 5000ms for this timeout,
+    /* most camera apps (including RealCamMI's own defaults) use somewhere between 2000ms and 5000ms for this timeout,
     balancing responsiveness with giving the lens enough time to actually achieve focus, especially indoors or in low light.
     4000 or 5000 (Recommended / Safe Default) - Safe for dark environments (low light)
     3000 (Aggressive / Fast Focusing)
      */
-    private static final long autofocus_timeout_c = 4500L; // timeout for calling autofocus_cb (applies for both auto and continuous focus)
+    private static final long autofocus_timeout_c = 2000L; // timeout for calling autofocus_cb (applies for both auto and continuous focus)
 
     private boolean capture_follows_autofocus_hint;
     private boolean ready_for_capture;
@@ -350,9 +317,9 @@ public class CameraController2 extends CameraController {
 
     private BurstType burst_type = BurstType.BURSTTYPE_NONE;
     // for BURSTTYPE_EXPO:
-    private final static int max_expo_bracketing_n_images = 5;
+    private final static int max_expo_bracketing_n_images = 5; // could be more, but limit to 5 for now
     private int expo_bracketing_n_images = 3;
-    private double expo_bracketing_stops = 8.0;
+    private double expo_bracketing_stops = 2.0;
     private boolean use_expo_fast_burst = true;  // for BURSTTYPE_FOCUS:
     private boolean focus_bracketing_in_progress; // whether focus bracketing in progress; set back to false to cancel
     private int focus_bracketing_n_images = 3; //
@@ -400,6 +367,17 @@ public class CameraController2 extends CameraController {
     private boolean want_video_high_speed;
     private boolean is_video_high_speed; // whether we're actually recording in high speed
     private List<int[]> ae_fps_ranges;
+
+    // [REALCAMMI FIX 2026-09-15] Exposes the AE target FPS ranges this specific device/sensor
+    // actually reports as supported (queried once at camera-open time from
+    // CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES - see where ae_fps_ranges is
+    // populated below). CONTROL_AE_TARGET_FPS_RANGE is not a free-form value: the Camera2 API
+    // requires it to exactly match one of these device-reported ranges, or the capture request
+    // can throw/behave unpredictably. Camera2Settings uses this instead of hardcoding a range
+    // that may or may not exist on a given device.
+    List<int[]> getAeFpsRanges() {
+        return ae_fps_ranges;
+    }
     private List<int[]> hs_fps_ranges;
     //private ImageReader previewImageReader;
     private SurfaceTexture texture;
@@ -423,8 +401,14 @@ public class CameraController2 extends CameraController {
     private static final int STATE_WAITING_FAKE_PRECAPTURE_DONE = 5;
     private int state = STATE_NORMAL;
     private long precapture_state_change_time_ms = -1L; // time we changed state for precapture modes
-    private static final long precapture_start_timeout_c = 1000L;
-    private static final long precapture_done_timeout_c = 3000L;
+    private static final long precapture_start_timeout_c = 2000L;
+
+
+    /*The optimal value for the `precapture_done_timeout` constant (which defines the timeout for the
+    completion of the pre-capture phase) typically falls between 3000L and 5000L (3 to 5 seconds).
+    The most recommended and widely documented default value within the Android Open Source Project (AOSP) ecosystem is 5000L (5000 milliseconds).
+     */
+    private static final long precapture_done_timeout_c = 5000L;
 
     private boolean use_fake_precapture; // see CameraController.setUseCamera2FakeFlash() for details - this is the user/application setting, see use_fake_precapture_mode for whether fake precapture is enabled (as we may do this for other purposes, e.g., front screen flash)
     private boolean use_fake_precapture_mode; // true if either use_fake_precapture is true, or we're temporarily using fake precapture mode (e.g., for front screen flash or exposure bracketing)
@@ -439,6 +423,11 @@ public class CameraController2 extends CameraController {
     private final int shutter_click_sound; // which sound to use for shutter click
     private boolean sounds_enabled = true;
 
+    // [REALCAMMI FORK 2026-08-31] Huawei Pro-mode-inspired metering mode selector - see
+    // setMeteringMode(). Initialised in the constructor from the persisted
+    // PreferenceKeys.MeteringModePreferenceKey.
+    private CameraController.MeteringMode metering_mode;
+
     private boolean has_received_frame;
     private boolean capture_result_is_ae_scanning;
     private Integer capture_result_ae; // latest ae_state, null if not available
@@ -450,7 +439,6 @@ public class CameraController2 extends CameraController {
     private RggbChannelVector capture_result_white_balance_rggb;
     private boolean capture_result_has_iso;
     private int capture_result_iso;
-    private float capture_result_zoom_ratio = 1.0f; // [REALCAMMI FORK] last zoom ratio from capture result, used for software crop
     private boolean capture_result_has_exposure_time;
     private long capture_result_exposure_time;
     private boolean capture_result_has_frame_duration;
@@ -468,11 +456,7 @@ public class CameraController2 extends CameraController {
      *  different to the preview.
      */
 
-    final static long max_preview_exposure_time_c = 1000000000L/15; // 1000000000L/5; default Open Camera
-    // Shutter speed: The camera sensor remains open for a maximum of 1/15 of a second (~66ms) per frame.
-    // Guaranteed fluidity: In very dark rooms, the preview rate drops to a minimum of 10 FPS (frames per second),
-    // preventing the screen from freezing completely. Light gain: The camera captures three times
-    // more light than it would if limited to 30 FPS.
+    final static long max_preview_exposure_time_c = 1000000000L/5;
 
     private void resetCaptureResultInfo() {
         capture_result_is_ae_scanning = false;
@@ -521,10 +505,10 @@ public class CameraController2 extends CameraController {
     }
 
     // Sets the minimum allowed value for white balance. This extreme creates very cool blue tones if is image is to red/hot.
-    private final static int min_white_balance_temperature_c = 1000;
+    private final static int min_white_balance_temperature_c = 2000; // default 1000
 
     // Sets the maximum allowed value for white balance. This extreme creates very warm red/orange tones if image is to blue/cold.
-    private final static int max_white_balance_temperature_c = 15000;
+    private final static int max_white_balance_temperature_c = 10000; // default 1500
 
     private boolean hasCaptureSession() {
         if( camera == null ) // capture session shouldn't be started if camera not opened, but check just in case
@@ -803,95 +787,15 @@ public class CameraController2 extends CameraController {
                 Log.d(TAG, "read " + bytes.length + " bytes");
             buffer.get(bytes);
 
-            // [REALCAMMI FORK BUGFIX 2026-08-01] Software crop workaround, DISABLED for now.
-            // History: originally added because Xiaomi's CamX HAL ignored CONTROL_ZOOM_RATIO/
-            // SCALER_CROP_REGION during still capture (confirmed via logcat: IQSetupTriggerData
-            // "pZoomRatioData is NULL"), so the app cropped the JPEG itself after capture. It was
-            // gated to is_xiaomi/is_ulefone, with this exact warning already written above it: "on
-            // devices whose HAL applies zoom correctly, this software crop would run on top of a
-            // frame the HAL already cropped, effectively doubling the zoom and losing field of
-            // view" - which is precisely what started happening on the Redmi Note 13 Pro 5G
-            // (garnet, 200MP): confirmed on-device via a preview-vs-photo comparison at 2.0x (photo
-            // came out ~2x more zoomed than the preview, and the focus area no longer matched the
-            // framing) that this device's current HAL/firmware now applies zoom correctly for still
-            // capture, so the software crop was actively duplicating it (2.0x requested -> ~4x
-            // effective).
-            //
-            // Fix applied: DEBUG_DISABLE_SOFTWARE_ZOOM_CROP is permanently true, and the is_xiaomi/
-            // is_ulefone device gating was removed - the crop below no longer runs for ANY device.
-            // IMPORTANT: is_ulefone has NOT been re-tested since this regression was found. If a
-            // "zoom doesn't crop" report ever comes back specifically on Ulefone, this is the first
-            // place to check - it may mean that device's HAL still needs this workaround, in which
-            // case re-add a device check here (after repeating the same preview-vs-photo test on
-            // that device) rather than re-enabling this unconditionally for everyone.
-            final boolean DEBUG_DISABLE_SOFTWARE_ZOOM_CROP = true;
-            if ( !DEBUG_DISABLE_SOFTWARE_ZOOM_CROP && camera_settings.current_zoom_ratio > 1.0f) {
-                try {
-                    BitmapFactory.Options options = new BitmapFactory.Options();
-                    Bitmap originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-
-                    if (originalBitmap != null) {
-                        int w = originalBitmap.getWidth();
-                        int h = originalBitmap.getHeight();
-
-                        // [REALCAMMI FORK] use the zoom ratio from the last capture result rather than
-                        // camera_settings.current_zoom_ratio, which can be stale when pinch zoom is used
-                        // (setZoom() is only called for discrete zoom steps, not every gesture frame).
-                        // Fall back to camera_settings.current_zoom_ratio if capture result has no zoom.
-                        float zoom = (capture_result_zoom_ratio > 1.0f) ? capture_result_zoom_ratio : camera_settings.current_zoom_ratio;
-                        int cropWidth = (int) (w / zoom);
-                        int cropHeight = (int) (h / zoom);
-                        // [REALCAMMI FORK BUGFIX] Must divide by 2.0 here, not 0.5. To center a crop
-                        // window of width cropWidth inside a frame of width w, the left offset is
-                        // (w - cropWidth) / 2 - dividing by 0.5 instead multiplies by 2, which pushes
-                        // x/y outside the bitmap's valid bounds for any zoom > 1x, making
-                        // Bitmap.createBitmap() throw every time (silently caught below, so the crop
-                        // then never actually applies - this has regressed back to /0.5 more than once,
-                        // if you're reading this while investigating a "zoom doesn't crop" report, this
-                        // is almost certainly why).
-                        int x = (int) ((w - cropWidth) / 2.0);
-                        int y = (int) ((h - cropHeight) / 2.0);
-
-                        Bitmap croppedBitmap = Bitmap.createBitmap(originalBitmap, x, y, cropWidth, cropHeight);
-
-                        ByteArrayOutputStream stream = new ByteArrayOutputStream();
-                        // [REALCAMMI FORK] use the user-configured JPEG quality instead of hardcoded 90
-                        // (also ensures quality=100 is used when color correction is active, per getImageQualityPref())
-                        // CameraController2 holds a Context reference that is the MainActivity (which implements
-                        // ApplicationInterface), so we can safely cast to get the configured quality.
-                        int jpeg_quality = 100;
-                        try {
-                            ApplicationInterface appInterface =
-                                (ApplicationInterface) CameraController2.this.context;
-                            jpeg_quality = appInterface.getImageQualityPref();
-                        } catch(ClassCastException e) {
-                            // context is not an ApplicationInterface, use default quality
-                        }
-                        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, jpeg_quality, stream);
-                        bytes = stream.toByteArray();
-
-                        // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item B] Cache a mutable copy of
-                        // this already-cropped bitmap, keyed to the exact "bytes" reference just
-                        // above, so ImageSaver.java can reuse it instead of decoding this JPEG a
-                        // second time if any post-processing runs afterwards. Must be a *copy*,
-                        // not croppedBitmap itself: Bitmap.createBitmap(source, x, y, w, h) always
-                        // returns an IMMUTABLE bitmap (confirmed in official Android docs), but
-                        // PostProcessing writes directly into the bitmap it receives (e.g.
-                        // stampImage()'s "new Canvas(bitmap)") - handing it the immutable original
-                        // would throw as soon as any post-processing tried to draw on it, crashing
-                        // every zoomed photo that also had any post-processing enabled. The copy
-                        // itself is a cheap pixel memcpy, far less costly than re-decoding the JPEG.
-                        Bitmap cacheableCroppedBitmap = croppedBitmap.copy(Bitmap.Config.ARGB_8888, true);
-                        LastCroppedBitmapCache.put(bytes, cacheableCroppedBitmap);
-
-                        originalBitmap.recycle();
-                        croppedBitmap.recycle();
-                        Log.d(TAG, "Software crop applied successfully for zoom: " + zoom);
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Software crop failed", e);
-                }
-            }
+            // [REALCAMMI CLEANUP 2026-10-07] The software zoom-crop workaround that used to run
+            // here (Xiaomi CamX HAL ignoring CONTROL_ZOOM_RATIO for stills) was permanently
+            // disabled on 2026-08-01 and has now been removed, together with the cropped-bitmap
+            // cache it fed. On-device preview-vs-photo comparison at 2.0x on the Redmi Note 13 Pro
+            // 5G (garnet) showed the HAL now applies zoom correctly for still capture, so the crop
+            // was doubling the zoom (2.0x requested -> ~4x effective).
+            // NOTE: Ulefone has NOT been re-tested since. If a "zoom doesn't crop" report ever
+            // comes back specifically on Ulefone, the old crop (see the original 1.2 source) may
+            // need to return behind an is_ulefone check, after repeating the same test there.
             image.close();
 
             synchronized( background_camera_lock ) {
@@ -1424,6 +1328,11 @@ public class CameraController2 extends CameraController {
 
         this.context = context;
         this.preview_error_cb = preview_error_cb;
+        // [REALCAMMI FORK 2026-08-31] Restore the persisted metering mode - see
+        // PreferenceKeys.MeteringModePreferenceKey.
+        SharedPreferences metering_mode_prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        this.metering_mode = meteringModeFromPreferenceValue(
+                metering_mode_prefs.getString(PreferenceKeys.MeteringModePreferenceKey, PreferenceKeys.MeteringModeDefault));
         this.camera_error_cb = camera_error_cb;
 
         //this.is_oneplus = Build.MANUFACTURER.toLowerCase(Locale.US).contains("oneplus");
@@ -1481,6 +1390,20 @@ public class CameraController2 extends CameraController {
                         Build.MODEL.contains("23122pcd1g") ||
                         Build.MODEL.contains("23122pcd1i") ||
                         // Redmi Note 13 Pro
+                        Build.MODEL.contains("2312dra50c") ||
+                        Build.MODEL.contains("2312dra50g") ||
+                        Build.MODEL.contains("2312dra50i") ||
+                        Build.MODEL.contains("2312crad3c");
+
+        // [REALCAMMI FORK 2026-09-19] Dedicated "garnet" fingerprint - see the field's own
+        // comment above for why this is kept separate from the broad is_xiaomi OR-chain just
+        // above. Matches the "garnet" device codename directly, plus the specific model numbers
+        // already listed under "poco x6 5g" and "Redmi Note 13 Pro" above - same physical
+        // hardware sold under both names in different markets.
+        this.is_garnet =
+                Build.DEVICE.contains("garnet") ||
+                        Build.MODEL.contains("23122pcd1g") ||
+                        Build.MODEL.contains("23122pcd1i") ||
                         Build.MODEL.contains("2312dra50c") ||
                         Build.MODEL.contains("2312dra50g") ||
                         Build.MODEL.contains("2312dra50i") ||
@@ -3181,6 +3104,46 @@ public class CameraController2 extends CameraController {
         }
 
         return camera_features;
+    }
+
+    // [REALCAMMI FORK 2026-08-31] Public accessors so Camera2Settings.java can convert the user's
+    // "Extra exposure compensation" preference (a fixed EV amount) into this device's own
+    // CONTROL_AE_EXPOSURE_COMPENSATION step count - that field is a COUNT OF STEPS per the
+    // official Android docs, not a fixed EV amount, and the step size is device-specific. Reads
+    // characteristics directly (cheap, already cached at camera-open time) rather than caching a
+    // second copy of what getCameraFeatures() computes above into camera_features.
+    public float getExposureCompensationStep() {
+        Float step = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP) != null ?
+                characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP).floatValue() : null;
+        return step != null ? step : 0.0f;
+    }
+
+    public int getMinimumExposureCompensation() {
+        Range<Integer> range = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+        return range != null ? range.getLower() : 0;
+    }
+
+    public int getMaximumExposureCompensation() {
+        Range<Integer> range = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+        return range != null ? range.getUpper() : 0;
+    }
+
+    /** [REALCAMMI FORK 2026-08-31] Reads the user's "Extra exposure compensation" preference
+     *  (PreferenceKeys.ExtraExposureCompensationPreferenceKey) - a GCam-style signed decimal EV
+     *  value the user types directly (not a slider), defaulting to 0 (no extra compensation).
+     *  Falls back to 0 on any unparseable/empty value rather than throwing, since this reads a
+     *  free-text preference the user could in theory leave blank or malformed.
+     */
+    public float getExtraExposureCompensationEV() {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.context);
+        String value = sharedPreferences.getString(PreferenceKeys.ExtraExposureCompensationPreferenceKey, PreferenceKeys.ExtraExposureCompensationDefault);
+        try {
+            return Float.parseFloat(value);
+        }
+        catch(NumberFormatException e) {
+            MyDebug.logStackTrace(TAG, "failed to parse extra exposure compensation preference: " + value, e);
+            return 0.0f;
+        }
     }
 
     @Override
@@ -4982,8 +4945,9 @@ public class CameraController2 extends CameraController {
             Log.d(TAG, "current_rect bottom: " + current_rect.bottom);*/
             }
             camera_settings.scalar_crop_region = new Rect(left, top, right, bottom);
-        // [REALCAMMI FORK] Tracks the requested zoom ratio for use by the software-crop fallback
-        // in onCaptureCompleted() when the HAL ignores CONTROL_ZOOM_RATIO (see is_xiaomi crop workaround)
+        // [REALCAMMI FORK] Tracks the requested zoom ratio in camera_settings.current_zoom_ratio.
+        // [REALCAMMI COMMENT FIX 2026-10-08] The comment used to say this fed a software-crop fallback
+        // for HALs that ignore CONTROL_ZOOM_RATIO; that crop was removed from the code.
             camera_settings.current_zoom_ratio = (float)zoom;
 
         if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ) {
@@ -5552,7 +5516,12 @@ public class CameraController2 extends CameraController {
             if( characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) > 0 ) {
                 has_metering = true;
                 camera_settings.ae_regions = new MeteringRectangle[1];
-                camera_settings.ae_regions[0] = new MeteringRectangle(0, 0, sensor_rect.width()-1, sensor_rect.height()-1, 0);
+                // [REALCAMMI FORK 2026-08-31] Restores the current metering_mode's default region
+                // instead of always full-frame, so a chosen Center-weighted/Spot mode survives past
+                // a tap-to-meter timeout rather than being silently reset to Matrix every time.
+                // getDefaultMeteringRegion() returns full-frame itself when metering_mode is
+                // MATRIX, so behaviour there is unchanged.
+                camera_settings.ae_regions[0] = getDefaultMeteringRegion(sensor_rect);
                 camera_settings.setAERegions(previewBuilder);
             }
             else
@@ -5570,6 +5539,92 @@ public class CameraController2 extends CameraController {
             Log.d(TAG, "af_regions: " + Arrays.toString(camera_settings.af_regions));
             Log.d(TAG, "ae_regions: " + Arrays.toString(camera_settings.ae_regions));
         }
+    }
+
+    /** [REALCAMMI FORK 2026-08-31] Returns the AE metering region for the current metering_mode,
+     *  centred on sensor_rect. METERING_MODE_MATRIX returns full-frame (0,0)-(width-1,height-1),
+     *  matching the pre-existing default region shape used by clearFocusAndMetering(). The
+     *  SPOT/CENTER_WEIGHTED fractions below (14%/35% half-extent, i.e. roughly 8%/50% of frame
+     *  area) are a starting estimate modelled on published Huawei Pro-mode spot/centre-weighted
+     *  descriptions, not a device-measured value.
+     */
+    private MeteringRectangle getDefaultMeteringRegion(Rect sensor_rect) {
+        if( metering_mode == CameraController.MeteringMode.METERING_MODE_MATRIX ) {
+            return new MeteringRectangle(0, 0, sensor_rect.width()-1, sensor_rect.height()-1, 0);
+        }
+        final float half_fraction = ( metering_mode == CameraController.MeteringMode.METERING_MODE_SPOT ) ? 0.14f : 0.35f;
+        int cx = sensor_rect.width()/2;
+        int cy = sensor_rect.height()/2;
+        int hwidth = Math.max(1, (int)(sensor_rect.width() * half_fraction));
+        int hheight = Math.max(1, (int)(sensor_rect.height() * half_fraction));
+        int left = Math.max(0, cx - hwidth);
+        int top = Math.max(0, cy - hheight);
+        int right = Math.min(sensor_rect.width()-1, cx + hwidth);
+        int bottom = Math.min(sensor_rect.height()-1, cy + hheight);
+        return new MeteringRectangle(left, top, right-left, bottom-top, 0);
+    }
+
+    /** [REALCAMMI FORK 2026-08-31] Huawei Pro-mode-inspired metering mode selector. Only changes
+     *  the DEFAULT AE region (used when there's no active tap-to-meter point); an in-progress tap
+     *  metering area is left alone and will pick up this mode's region next time
+     *  clearFocusAndMetering() runs (i.e. once the tap area times out), via the fix above.
+     */
+    @Override
+    public void setMeteringMode(CameraController.MeteringMode metering_mode) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "setMeteringMode: " + metering_mode);
+        BLOCK_FOR_EXTENSIONS();
+        this.metering_mode = metering_mode;
+        // Persist the choice so it survives an app restart/camera re-open, and so it's
+        // automatically captured by Save/Restore Settings (which dumps every SharedPreference
+        // generically - no extra registration needed there).
+        PreferenceManager.getDefaultSharedPreferences(this.context).edit()
+                .putString(PreferenceKeys.MeteringModePreferenceKey, meteringModeToPreferenceValue(metering_mode))
+                .apply();
+        Rect sensor_rect = getViewableRect();
+        if( sensor_rect.width() <= 0 || sensor_rect.height() <= 0 ) {
+            // had a crash on Google Play due to creating a MeteringRectangle with -ve width/height ?!
+            // (same guard as clearFocusAndMetering())
+            return;
+        }
+        if( characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) > 0 ) {
+            camera_settings.ae_regions = new MeteringRectangle[]{ getDefaultMeteringRegion(sensor_rect) };
+            camera_settings.setAERegions(previewBuilder);
+            try {
+                setRepeatingRequest();
+            }
+            catch(CameraAccessException e) {
+                MyDebug.logStackTrace(TAG, "failed to set metering mode region", e);
+            }
+        }
+    }
+
+    @Override
+    public CameraController.MeteringMode getMeteringMode() {
+        return this.metering_mode;
+    }
+
+    /** [REALCAMMI FORK 2026-08-31] Metering mode <-> readable preference string conversion, used
+     *  both here (setMeteringMode()) and in the constructor (restoring the persisted value).
+     *  Kept as readable strings (not an enum ordinal/int) so a saved settings .xml file is
+     *  self-explanatory if a user inspects it by hand.
+     */
+    private static String meteringModeToPreferenceValue(CameraController.MeteringMode mode) {
+        if( mode == CameraController.MeteringMode.METERING_MODE_CENTER_WEIGHTED )
+            return PreferenceKeys.MeteringModeValueCenterWeighted;
+        else if( mode == CameraController.MeteringMode.METERING_MODE_SPOT )
+            return PreferenceKeys.MeteringModeValueSpot;
+        else
+            return PreferenceKeys.MeteringModeValueMatrix;
+    }
+
+    private static CameraController.MeteringMode meteringModeFromPreferenceValue(String value) {
+        if( PreferenceKeys.MeteringModeValueCenterWeighted.equals(value) )
+            return CameraController.MeteringMode.METERING_MODE_CENTER_WEIGHTED;
+        else if( PreferenceKeys.MeteringModeValueSpot.equals(value) )
+            return CameraController.MeteringMode.METERING_MODE_SPOT;
+        else
+            return CameraController.MeteringMode.METERING_MODE_MATRIX;
     }
 
     @Override
@@ -5834,70 +5889,6 @@ public class CameraController2 extends CameraController {
         catch(CameraAccessException e) {
             MyDebug.logStackTrace(TAG, "failed to create capture request", e);
         }
-    }
-
-    /** Switches to a different physical camera lens (e.g. ultrawide, telephoto).
-     *  Updates selectedPhysicalCameraId and closes the current capture session
-     *  so it will be re-created with the new physical camera on the next preview start.
-     */
-    public void switchLens(String physicalId) {
-        if (MyDebug.LOG)
-            Log.d(TAG, "switchLens called: " + physicalId);
-
-        selectedPhysicalCameraId = physicalId;
-
-        try {
-            closeCaptureSession();
-        } catch (Exception e) {
-            MyDebug.logStackTrace(TAG, "error closing capture session in switchLens", e);
-        }
-    }
-
-    /**
-     * Returns true if the given camera ID is NOT in the standard getCameraIdList().
-     * These are the hidden sensors Xiaomi/Ulefone blocks from direct openCamera() calls.
-     */
-    private boolean isHiddenCameraId(CameraManager manager, String id) {
-        try {
-            for (String standardId : manager.getCameraIdList()) {
-                if (standardId.equals(id)) return false;
-            }
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "isHiddenCameraId failed: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Finds the logical camera that lists the given physical ID in getPhysicalCameraIds().
-     * Falls back to "0" if not found, since that's the main back camera on all Xiaomi devices.
-     */
-    @RequiresApi(api = Build.VERSION_CODES.P)
-    private String findLogicalParentForPhysicalId(CameraManager manager, String physicalId) {
-        try {
-            for (String logicalId : manager.getCameraIdList()) {
-                try {
-                    CameraCharacteristics chars =
-                            manager.getCameraCharacteristics(logicalId);
-
-                    Set<String> physicalIds =
-                            chars.getPhysicalCameraIds();
-
-                    if (physicalIds != null && physicalIds.contains(physicalId)) {
-                        Log.e(TAG,
-                                "Found logical parent: " + physicalId + " -> " + logicalId);
-                        return logicalId;
-                    }
-
-                } catch (Exception ignored) {}
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "findLogicalParent failed: " + e.getMessage());
-        }
-
-        Log.e(TAG, "No logical parent found for " + physicalId);
-        return null;
     }
 
     // should synchronize calls to this method using background_camera_lock
@@ -6448,7 +6439,7 @@ public class CameraController2 extends CameraController {
                 if( MyDebug.LOG )
                     Log.d(TAG, "create high speed capture session");
                 // [REALCAMMI FORK] Added selectedPhysicalCameraId check — ensures output config list is used
-                // when a physical lens was switched via switchLens(), not just for legacy cameraIdSPhysical
+                // when a physical lens override (selectedPhysicalCameraId) is set, not just for legacy cameraIdSPhysical
                 if( ( cameraIdSPhysical != null || selectedPhysicalCameraId != null || want_jpeg_r ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ) {
                     List<OutputConfiguration> outputs = createOutputConfigurationList(surfaces, preview_surface);
                     SessionConfiguration sessionConfiguration = new SessionConfiguration(SessionConfiguration.SESSION_HIGH_SPEED, outputs, executor, myStateCallback);
@@ -6502,7 +6493,7 @@ public class CameraController2 extends CameraController {
                     Log.d(TAG, "create capture session");
                 try {
                     // [REALCAMMI FORK] Added selectedPhysicalCameraId check — ensures output config list is used
-                    // when a physical lens was switched via switchLens(), not just for legacy cameraIdSPhysical
+                    // when a physical lens override (selectedPhysicalCameraId) is set, not just for legacy cameraIdSPhysical
                     if( ( cameraIdSPhysical != null || selectedPhysicalCameraId != null || want_jpeg_r ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ) {
                         List<OutputConfiguration> outputs = createOutputConfigurationList(surfaces, preview_surface);
                         /*camera.createCaptureSessionByOutputConfigurations(outputs,
@@ -7890,10 +7881,22 @@ public class CameraController2 extends CameraController {
                         Log.d(TAG, "n_burst is now " + n_burst);
                 }
                 else if( burst_for_noise_reduction ) {
-                    if( MyDebug.LOG )
-                        Log.d(TAG, "choose n_burst for burst_for_noise_reduction");
-                    n_burst = 4;
-                    n_burst_taken = 0;
+                        // [REALCAMMI FORK] Fixed 2026-08-12: this used to also require
+                        // capture_result_has_exposure_time here, which is still false on the
+                        // very first shutter press of a session (camera just opened/focused, no
+                        // CaptureResult has arrived yet) - that made the whole branch fall
+                        // through to the "user requested n_burst" else below, which returns 0
+                        // (burst_requested_n_images isn't meant for this path), so the first tap
+                        // silently did nothing and only the second tap actually started the
+                        // burst. Removed: the inner block below already guards its own use of
+                        // capture_result_has_iso/capture_result_has_exposure_time correctly, and
+                        // n_burst has a safe default (N_IMAGES_NR_DARK_LOW_LIGHT) even without
+                        // metering data yet.
+                        if (MyDebug.LOG)
+                            Log.d(TAG, "choose n_burst for burst_for_noise_reduction");
+                        stillBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
+                        n_burst = CameraController.N_IMAGES_NR_DARK_LOW_LIGHT;
+                        n_burst_taken = 0;
 
                     if( capture_result_has_iso && capture_result_has_exposure_time ) {
                         if( HDRProcessor.sceneIsLowLight(capture_result_iso, capture_result_exposure_time) ) {
@@ -7905,14 +7908,15 @@ public class CameraController2 extends CameraController {
                             // (Even on old versions, we didn't do this for OnePlus devices, due to bug on OnePlus 3T where manual mode can't be set above 800, so this
                             // would cause images to come out too dark.)
                         }
+
                         else if( capture_result_has_exposure_time ) {
                             final long fixed_exposure_time = 1000000000L/60;
                             long exposure_time = capture_result_exposure_time;
                             if( exposure_time <= fixed_exposure_time ) {
                                 if( MyDebug.LOG )
                                     Log.d(TAG, "optimise for bright scene");
-                                //n_burst = 2;
-                                n_burst = 3;
+                                n_burst = 2;
+                                n_burst_taken = 0;
                                 // Versions previous to 1.51 would switch to manual mode and underexpose in bright scenes; however on more modern devices such as
                                 // Samsung and Pixels, this means that we lose the benefit of manufacturer algorithms creating a worse result. So we're better off
                                 // staying in auto mode.
@@ -9224,15 +9228,6 @@ public class CameraController2 extends CameraController {
             }
             else {
                 capture_result_has_iso = false;
-            }
-
-            // [REALCAMMI FORK] read zoom ratio from capture result for use in software crop
-            // (camera_settings.current_zoom_ratio can be stale when pinch zoom is used)
-            if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ) {
-                Float zoom_ratio = result.get(CaptureResult.CONTROL_ZOOM_RATIO);
-                if( zoom_ratio != null ) {
-                    capture_result_zoom_ratio = zoom_ratio;
-                }
             }
 
             if( modified_from_camera_settings ) {

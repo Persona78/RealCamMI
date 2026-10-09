@@ -27,7 +27,7 @@ import java.util.List;
  *  post-capture photo effect (see PostProcessing.postProcessBitmap()).
  *
  *  Design goals (2026-07-20, based on a review of what makes computational bokeh look
- *  "fake" vs natural - see chat log for sources):
+ *  "fake" vs natural; sources not recorded here):
  *   1. Blur amount is a CONTINUOUS function of per-pixel depth, never a binary subject/
  *      background mask - avoids the abrupt "cardboard cutout" look.
  *   2. Blur amount SATURATES (plateaus) at a moderate maximum, mimicking how a real lens's
@@ -54,24 +54,37 @@ import java.util.List;
  *
  *  Uses MiDaS v2.1 small (https://github.com/isl-org/MiDaS), bundled as
  *  assets/midas_v21_small.tflite. Input: resize to 256x256, normalise to [-1,1] per channel -
- *  confirmed against two independent sources for this exact model file (see chat log). Output:
- *  256x256 single-channel relative INVERSE depth (higher value = CLOSER to the camera) -
- *  likewise confirmed against an independent source for this exact model, but not yet verified
- *  against a real capture from this app; if the blur ends up inverted (background sharp,
- *  subject blurred), swap the sign in estimateDepth() where noted.
+ *  confirmed against two independent sources for this exact model file. Output:
+ *  256x256 single-channel relative depth - confirmed against an independent source for this
+ *  exact model, but not yet verified against a real capture from this app.
+ *
+ *  [REALCAMMI FORK 2026-09-12] The sign/orientation of MiDaS's output (whether higher values
+ *  mean closer or farther) does NOT need on-device verification: apply() computes the blur
+ *  weight from Core.absdiff(depthRefined, focusDepth) - the ABSOLUTE distance from the focal
+ *  plane's depth value - so the effect is symmetric regardless of which direction the raw
+ *  values run in. Whatever MiDaS's convention is, pixels near the focus depth stay sharp and
+ *  pixels far from it (nearer OR farther) blur; there is no sign to swap and no separate
+ *  on-device check needed for this specific concern.
  */
 public class DepthEffect {
     private static final String TAG = "DepthEffect";
     private static final String MODEL_FILENAME = "midas_v21_small.tflite";
     private static final int MODEL_INPUT_SIZE = 256; // MiDaS v2.1 small: fixed 256x256 input
 
-    // Tune 12
     // [REALCAMMI FORK TUNE] Working resolution cap (longest side, px) for the expensive steps
     // (guided filter, the Gaussian blur layer). Output is still full photo resolution - only
     // these intermediate steps are capped, since blurred/depth content has no fine detail that
     // full resolution would preserve anyway. Raise this if the blur/depth edges look too soft
     // relative to the sharp foreground; lower it if this is still too slow/heavy on-device.
     private static final int WORK_LONG_SIDE = 1280;
+
+    // [REALCAMMI FORK LIBYUV 2026-10-04] When true, the two Bitmap downscales in this class (full photo ->
+    // WORK_LONG_SIDE working copy, and working copy -> 256x256 MiDaS input) use libyuv box-filter area
+    // averaging (see LibYuvScaler.java) instead of Bitmap.createScaledBitmap(). Any failure or unsupported
+    // input falls back to createScaledBitmap() automatically. Set to false to restore the previous
+    // behaviour exactly. NOTE: the "natural" preset baseline (2026-07-21) was tuned on-device with
+    // createScaledBitmap(), so an on-device A/B of this change is still pending.
+    private static final boolean USE_LIBYUV_SCALING = true;
 
     // [REALCAMMI FORK TUNE] Maximum blur radius (Gaussian sigma, in px, at the WORK_LONG_SIDE
     // working resolution) for the most out-of-focus background - keep this moderate. Real
@@ -92,6 +105,16 @@ public class DepthEffect {
     // set by PostProcessing.java before calling apply(). Defaults are the 2026-07-21 on-device
     // confirmed baseline ("natural" preset) - unchanged behaviour if setStrengthPreset() is
     // never called.
+    // [REALCAMMI FORK TUNE 2026-09-25] Nº de threads de CPU para a inferência do MiDaS -
+    // anteriormente não definido, o que deixava o interpreter no default da TFLite (na prática
+    // single-thread nesta versão), o maior custo isolado a seguir ao bilateralFilter da NR no
+    // garnet. Segue o próprio padrão documentado da TensorFlow para Android (4 threads quando
+    // não há delegate GPU/NNAPI - ver tensorflow.org/lite/android/delegates/gpu), reservando
+    // um núcleo para o resto do pipeline de captura/UI via availableProcessors()-1, limitado a
+    // [1,4] para não sobrecarregar um dispositivo com poucos núcleos. Não altera o resultado/
+    // qualidade do modelo - setNumThreads() só afeta a velocidade da inferência.
+    private static final int MAX_INFERENCE_THREADS = 4;
+
     private float maxBlurSigma = DEFAULT_MAX_BLUR_SIGMA;
 
     private float falloffSharpness = DEFAULT_FALLOFF_SHARPNESS;
@@ -99,7 +122,10 @@ public class DepthEffect {
     private final Interpreter interpreter;
 
     public DepthEffect(Context context) throws IOException {
-        interpreter = new Interpreter(loadModelFile(context));
+        int numThreads = Math.max(1, Math.min(MAX_INFERENCE_THREADS, Runtime.getRuntime().availableProcessors() - 1));
+        Interpreter.Options options = new Interpreter.Options();
+        options.setNumThreads(numThreads);
+        interpreter = new Interpreter(loadModelFile(context), options);
     }
 
     private MappedByteBuffer loadModelFile(Context context) throws IOException {
@@ -146,13 +172,26 @@ public class DepthEffect {
         }
     }
 
+    /** [REALCAMMI FORK LIBYUV 2026-10-04] Downscales [src] to w x h. Tries libyuv box filtering first
+     *  (when USE_LIBYUV_SCALING is on) and falls back to the original Bitmap.createScaledBitmap() call
+     *  whenever LibYuvScaler declines or fails, so the result is always a valid bitmap.
+     */
+    private static Bitmap scaleForDepth(Bitmap src, int w, int h) {
+        if( USE_LIBYUV_SCALING ) {
+            Bitmap scaled = LibYuvScaler.scaleBox(src, w, h);
+            if( scaled != null )
+                return scaled;
+        }
+        return Bitmap.createScaledBitmap(src, w, h, true);
+    }
+
     /** Runs MiDaS on a downscaled copy of [bitmap] and returns a MODEL_INPUT_SIZE x
      *  MODEL_INPUT_SIZE relative depth map (row-major, higher = closer - see class doc comment).
      *  Defensively checks the model's actual output tensor shape rather than assuming it, since
      *  this has not been verified against a real on-device run.
      */
     private float[] estimateDepth(Bitmap bitmap) {
-        Bitmap resized = Bitmap.createScaledBitmap(bitmap, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, true);
+        Bitmap resized = scaleForDepth(bitmap, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
 
         ByteBuffer input = ByteBuffer.allocateDirect(4 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3);
         input.order(ByteOrder.nativeOrder());
@@ -220,7 +259,7 @@ public class DepthEffect {
             int workW = Math.max(2, Math.round(fullW * scale));
             int workH = Math.max(2, Math.round(fullH * scale));
 
-            workBitmap = Bitmap.createScaledBitmap(bitmap, workW, workH, true);
+            workBitmap = scaleForDepth(bitmap, workW, workH);
 
             // --- Depth map, at working resolution ---
             float[] depthSmall = estimateDepth(workBitmap);

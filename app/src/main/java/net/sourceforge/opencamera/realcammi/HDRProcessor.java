@@ -5,19 +5,21 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;*/
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Matrix;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.Matrix;
 //import android.media.MediaScannerConnection;
 //import android.os.Environment;
-
-import androidx.annotation.NonNull;
-import android.util.Log;
 
 public class HDRProcessor {
     private static final String TAG = "HDRProcessor";
@@ -30,6 +32,95 @@ public class HDRProcessor {
     public int [] offsets_y = null;
     @SuppressWarnings("CanBeFinal")
     public int sharp_index = 0;
+
+    // [REALCAMMI FORK 2026-09-18] Master switch for the "lucky imaging" reference-frame
+    // selection in processAvg() below. Set to true to try it; if on-device testing (burst NR
+    // mode, handheld, low light - the case this matters most for) doesn't show a clear
+    // improvement, or shows the extra computeSharpness() calls adding noticeable delay, set this
+    // back to false to fully restore the old always-use-frame-0 behaviour. Not yet confirmed on
+    // real Garnet/Ulefone captures the way BASELINE_SHARPEN_AMOUNT was in PostProcessing.java -
+    // same "tune, then verify on-device, then trust it" process should apply here too.
+    private static final boolean USE_SHARPNESS_TEST = true;
+
+    // [REALCAMMI FORK 2026-09-18] "Lucky imaging" - GCam's HDR+/Night Sight pick the sharpest
+    // frame of the burst as the alignment reference (a handheld burst can easily have the very
+    // first frame slightly blurred from shutter-press shake, while a later frame is steadier).
+    // computeSharpness() below did not previously exist as working code - the call site in
+    // processAvg() referencing it (and allocation_avg/allocation_new, which are RenderScript
+    // Allocations that no longer exist anywhere in this Bitmap-based version of the file) was
+    // commented-out dead code, left over from an earlier RenderScript-based version of this
+    // class. It would not have compiled if simply uncommented. Implemented fresh here, in the
+    // same lightweight sparse-sampling style as computeMedianLuminance() above (100 total sample
+    // points, plain Bitmap.getPixel() calls, no OpenCV/RenderScript) specifically because the
+    // original disabled comment's stated reason for not using this ("takes about 1s extra") is a
+    // real risk with a naive full-resolution pass - getPixel() is a per-call JNI round trip, and
+    // doing that for every pixel of a multi-megapixel photo is genuinely slow. Sampling the same
+    // 100-point grid this file already uses elsewhere keeps the cost comparable to the existing
+    // computeMedianLuminance() call already made on every burst frame.
+    // Metric: average squared local luminance gradient (horizontal + vertical) at each sample
+    // point - a standard, cheap proxy for high-frequency detail (a sharp image has strong local
+    // gradients at edges; a blurred/shaky one has weaker ones). Not a true Laplacian - a coarse
+    // approximation appropriate for a sparse grid.
+    // [REALCAMMI FORK 2026-09-18] Made static (doesn't touch any instance state) and
+    // package-visible so MyApplicationInterface's "Best Shot" feature (Standard photo mode,
+    // reuses this same sharpness metric to pick the best of a few quick frames) can call it
+    // directly instead of duplicating the algorithm.
+    static float computeSharpness(Bitmap bitmap, int width, int height) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "computeSharpness");
+        final int n_samples_c = 100;
+        final int n_w_samples = (int)Math.sqrt(n_samples_c);
+        final int n_h_samples = n_samples_c/n_w_samples;
+        // step used for the gradient's second sample point - a few pixels apart so we're
+        // measuring local contrast/edges, not adjacent-pixel sensor noise
+        final int grad_step = 4;
+
+        double sum_gradient_sq = 0.0;
+        int count = 0;
+        for(int y=0;y<n_h_samples;y++) {
+            double alpha = ((double) y + 1.0) / ((double) n_h_samples + 1.0);
+            int y_coord = (int) (alpha * height);
+            if( y_coord + grad_step >= height )
+                y_coord = height - grad_step - 1;
+            if( y_coord < 0 )
+                continue;
+            for(int x=0;x<n_w_samples;x++) {
+                double beta = ((double) x + 1.0) / ((double) n_w_samples + 1.0);
+                int x_coord = (int) (beta * width);
+                if( x_coord + grad_step >= width )
+                    x_coord = width - grad_step - 1;
+                if( x_coord < 0 )
+                    continue;
+
+                int color_c = bitmap.getPixel(x_coord, y_coord);
+                int color_x = bitmap.getPixel(x_coord + grad_step, y_coord);
+                int color_y = bitmap.getPixel(x_coord, y_coord + grad_step);
+
+                float lum_c = luminanceOf(color_c);
+                float lum_x = luminanceOf(color_x);
+                float lum_y = luminanceOf(color_y);
+
+                float grad_x = lum_x - lum_c;
+                float grad_y = lum_y - lum_c;
+                sum_gradient_sq += (double)(grad_x*grad_x + grad_y*grad_y);
+                count++;
+            }
+        }
+
+        float sharpness = count > 0 ? (float)(sum_gradient_sq / count) : 0.0f;
+        if( MyDebug.LOG )
+            Log.d(TAG, "computeSharpness: " + sharpness);
+        return sharpness;
+    }
+
+    /** Simple max(R,G,B) luminance, matching the metric computeMedianLuminance() above already
+     *  uses, so the two sparse-sampling methods in this file are consistent with each other. */
+    private static float luminanceOf(int color) {
+        int r = (color & 0xFF0000) >> 16;
+        int g = (color & 0xFF00) >> 8;
+        int b = (color & 0xFF);
+        return Math.max(r, Math.max(g, b));
+    }
 
     private enum HDRAlgorithm {
         HDRALGORITHM_STANDARD,
@@ -456,7 +547,7 @@ public class HDRProcessor {
         int r = (color & 0xFF0000) >> 16;
         int g = (color & 0xFF00) >> 8;
         int b = (color & 0xFF);
-        return (r + g + b)/3.0;
+        return ((double)r + g + b) / 3.0;
         //return 0.27*r + 0.67*g + 0.06*b;
     }
 
@@ -636,8 +727,8 @@ public class HDRProcessor {
                     throw new RuntimeException("tonemap_scale_c: " + tonemap_scale_c);
                 }*/
                 // important to set a min value, see testHDR58, testHDR59, testHDR60 - at least 0.25, but 0.5 works better:
-                //tonemap_scale_c = Math.max(tonemap_scale_c, 0.25f*255.0f);
-                tonemap_scale_c = Math.max(tonemap_scale_c, 0.5f*255.0f);
+                tonemap_scale_c = Math.max(tonemap_scale_c, 0.25f*255.0f);
+                /*tonemap_scale_c = Math.max(tonemap_scale_c, 0.5f*255.0f);*/
             }
             //throw new RuntimeException(); // test
         }
@@ -939,16 +1030,21 @@ public class HDRProcessor {
         int width = bitmap_avg.getWidth();
         int height = bitmap_avg.getHeight();
 
-        /*final boolean use_sharpness_test = false; // disabled for now - takes about 1s extra, and no evidence this helps quality
-        if( use_sharpness_test ) {
-            float sharpness_avg = computeSharpness(allocation_avg, width, time_s);
-            float sharpness_new = computeSharpness(allocation_new, width, time_s);
+        // [REALCAMMI FORK 2026-09-18] "Lucky imaging": use whichever of the first two burst
+        // frames is sharper as the alignment reference for the rest of the merge, rather than
+        // always frame 0 - see computeSharpness()'s comment above for why this was previously
+        // dead/non-functional code, and USE_SHARPNESS_TEST's comment below for how to turn this
+        // back off if on-device testing doesn't bear it out.
+        if( USE_SHARPNESS_TEST ) {
+            float sharpness_avg = computeSharpness(bitmap_avg, width, height);
+            float sharpness_new = computeSharpness(bitmap_new, width, height);
+            if( MyDebug.LOG ) {
+                Log.d(TAG, "sharpness_avg: " + sharpness_avg);
+                Log.d(TAG, "sharpness_new: " + sharpness_new);
+            }
             if( sharpness_new > sharpness_avg ) {
                 if( MyDebug.LOG )
                     Log.d(TAG, "use new image as reference");
-                Allocation dummy_allocation = allocation_avg;
-                allocation_avg = allocation_new;
-                allocation_new = dummy_allocation;
                 Bitmap dummy_bitmap = bitmap_avg;
                 bitmap_avg = bitmap_new;
                 bitmap_new = dummy_bitmap;
@@ -959,7 +1055,7 @@ public class HDRProcessor {
             }
             if( MyDebug.LOG )
                 Log.d(TAG, "sharp_index: " + sharp_index);
-        }*/
+        }
 
         /*LuminanceInfo luminanceInfo = computeMedianLuminance(bitmap_avg, 0, 0, width, height);
         if( MyDebug.LOG )
@@ -1595,8 +1691,27 @@ public class HDRProcessor {
                 mtb_bitmaps[i] = null;
             }
         }
+        //  Recycle and flush remaining bitmap elements from the alignment pool to prevent native memory accumulation
+        // [REALCAMMI FORK] REVERTED 2026-08-14: this recycled every bitmap in the list except
+        // base_bitmap right here, inside autoAlignment() - but the caller (processHDRCore(), a
+        // few lines after calling this method) still reads pixel data from every one of those
+        // same bitmaps via createFunctionFromBitmaps(bitmaps.get(i), ...) to build the tone
+        // response functions used for the actual merge. Recycling them here corrupts (or
+        // crashes on) that read - confirmed by tracing the caller, not by a device test. If
+        // native memory pressure from the alignment pool needs addressing, it has to happen
+        // after createFunctionFromBitmaps() has finished using every bitmap, not before.
+        /*
+        if (bitmaps != null) {
+            for (Bitmap b : bitmaps) {
+                if (b != null && !b.isRecycled() && b != bitmaps.get(base_bitmap)) {
+                    b.recycle();
+                }
+            }
+        }
+        */
         return new BrightnessDetails(median_brightness);
     }
+
 
     public static class LuminanceInfo implements Comparable<LuminanceInfo> {
         final int min_value;

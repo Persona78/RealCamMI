@@ -1,0 +1,11 @@
+<vector android:height="48dp" android:tint="#ffffff"
+    android:viewportHeight="960" android:viewportWidth="960"
+    android:width="48dp" xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- [REALCAMMI FORK 2026-08-31] Metering mode icon: Spot (small center dot + reticle crosshair) -->
+    <path android:fillColor="#ffffff" android:pathData="
+        M480,390 A90,90 0 1 0 480,570 A90,90 0 1 0 480,390 Z
+        M460,220 h40 v140 h-40 Z
+        M460,600 h40 v140 h-40 Z
+        M220,460 h140 v40 h-140 Z
+        M600,460 h140 v40 h-140 Z"/>
+</vector>

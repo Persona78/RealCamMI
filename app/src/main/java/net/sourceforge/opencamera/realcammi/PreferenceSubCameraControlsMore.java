@@ -215,6 +215,23 @@ public class PreferenceSubCameraControlsMore extends PreferenceSubScreen {
             });
         }
 
+        {
+            final Preference pref = findPreference("preference_match_photo_look");
+            pref.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+                @Override
+                public boolean onPreferenceClick(Preference arg0) {
+                    if( pref.getKey().equals("preference_match_photo_look") ) {
+                        if( MyDebug.LOG )
+                            Log.d(TAG, "user clicked match photo's look");
+                        MainActivity main_activity = (MainActivity)PreferenceSubCameraControlsMore.this.getActivity();
+                        main_activity.launchPhotoLookMatcher();
+                        return false;
+                    }
+                    return false;
+                }
+            });
+        }
+
         // preference_save_location done in onResume
         MyPreferenceFragment.setSummary(findPreference("preference_save_photo_prefix"));
         MyPreferenceFragment.setSummary(findPreference("preference_save_video_prefix"));

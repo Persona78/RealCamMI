@@ -78,23 +78,23 @@
     
     <!-- [REALCAMMI FORK] OpenCV post-processing feature names -->
     <string name="preference_opencv_sharpen" translatable="false">Sharpening (OpenCV)</string>
-    <string name="preference_opencv_sharpen_summary" translatable="false">Applies adaptive Unsharp Mask sharpening to each photo after capture. Enhances fine detail without colour fringing. Applied after noise reduction.</string>
+    <string name="preference_opencv_sharpen_summary" translatable="false">Sharpens photos after capture using Unsharp Mask. Enhances detail without colour fringing.</string>
     <string name="preference_opencv_nr" translatable="false">Noise reduction (OpenCV)</string>
-    <string name="preference_opencv_nr_summary" translatable="false">Applies Bilateral Filter noise reduction to each photo after capture. Smooths flat areas while preserving edges. Applied before sharpening.</string>
+    <string name="preference_opencv_nr_summary" translatable="false">Reduces noise after capture using Bilateral Filter. Smooths flat areas, keeps edges sharp.</string>
     <string name="preference_opencv_clahe" translatable="false">Contrast enhancement (OpenCV)</string>
-    <string name="preference_opencv_clahe_summary" translatable="false">Applies CLAHE (Contrast Limited Adaptive Histogram Equalisation) to improve local contrast. Dark areas gain more detail without blowing out highlights.</string>
+    <string name="preference_opencv_clahe_summary" translatable="false">Improves local contrast (CLAHE). Adds detail to dark areas without blowing out highlights.</string>
     <string name="preference_opencv_blur_detect" translatable="false">Blur detection (OpenCV)</string>
-    <string name="preference_opencv_blur_detect_summary" translatable="false">Analyses each photo after capture and shows a warning if it appears blurry. Uses Laplacian variance to detect lack of sharpness.</string>
+    <string name="preference_opencv_blur_detect_summary" translatable="false">Warns after capture if a photo looks blurry, using Laplacian variance.</string>
 
     <!-- [REALCAMMI FORK] OpenCV show-icon preference names -->
     <string name="preference_show_opencv_sharpen" translatable="false">Show sharpening icon</string>
-    <string name="preference_show_opencv_sharpen_summary" translatable="false">Whether to show an on-screen icon to enable or disable OpenCV adaptive sharpening.</string>
+    <string name="preference_show_opencv_sharpen_summary" translatable="false">Shows an on-screen icon to toggle OpenCV sharpening.</string>
     <string name="preference_show_opencv_nr" translatable="false">Show noise reduction icon</string>
-    <string name="preference_show_opencv_nr_summary" translatable="false">Whether to show an on-screen icon to enable or disable OpenCV bilateral noise reduction.</string>
+    <string name="preference_show_opencv_nr_summary" translatable="false">Shows an on-screen icon to toggle OpenCV noise reduction.</string>
     <string name="preference_show_opencv_clahe" translatable="false">Show contrast enhancement icon</string>
-    <string name="preference_show_opencv_clahe_summary" translatable="false">Whether to show an on-screen icon to enable or disable OpenCV CLAHE contrast enhancement.</string>
+    <string name="preference_show_opencv_clahe_summary" translatable="false">Shows an on-screen icon to toggle OpenCV contrast enhancement.</string>
     <string name="preference_show_opencv_blur_detect" translatable="false">Show blur detection icon</string>
-    <string name="preference_show_opencv_blur_detect_summary" translatable="false">Whether to show an on-screen icon to enable or disable OpenCV blur detection warnings.</string>
+    <string name="preference_show_opencv_blur_detect_summary" translatable="false">Shows an on-screen icon to toggle blur detection.</string>
     <string name="preference_color_effect">Apply a color effect</string>
     <string name="preference_color_effect_summary">Applies the selected color effect to the photo</string>
     <string name="preference_scene_mode">Apply a scene mode</string>
@@ -115,12 +115,12 @@
     <string name="preference_timer_beep">Timer beep</string>
     <string name="preference_timer_beep_summary">Beep when timer is counting down or for repeat mode delay</string>
     <string name="preference_timer_speak" translatable="false">Voice timer countdown</string>
-    <string name="preference_timer_speak_summary" translatable="false">Speak the countdown for timer or repeat mode delay (from 60 seconds)</string>
+    <string name="preference_timer_speak_summary" translatable="false">Speaks the countdown for timer or repeat mode delay (from 60s).</string>
     <string name="preference_burst_mode">Repeat</string> <!-- preference is called "burst" for historical reasons, but is more of a repeat mode; also used in popup menu, so shouldn't be too long a string -->
     <string name="preference_burst_interval">Repeat mode interval</string>
     <string name="preference_screen_camera_controls_more">More camera controls…</string>
     <string name="preference_touch_capture" translatable="false">Touch to capture</string>
-    <string name="preference_touch_capture_summary" translatable="false">Take a photo or record video just by touching or double-tapping the preview\n%s</string>
+    <string name="preference_touch_capture_summary" translatable="false">Take a photo or record video by tapping or double-tapping the preview.\n%s</string>
     <string name="preference_pause_preview">Pause after taking photo</string>
     <string name="preference_pause_preview_summary">Pause the screen after taking a photo, with the option to share or delete the photo</string>
     <string name="preference_shutter_sound">Shutter sound</string>
@@ -129,22 +129,22 @@
     <string name="preference_audio_control" translatable="false">Audio control options</string>
     <!-- preference_audio_control_summary defined below -->
     <string name="preference_audio_noise_control_sensitivity" translatable="false">Audio control sensitivity</string>
-    <string name="preference_audio_noise_control_sensitivity_summary" translatable="false">Noise level sensitivity for audio (loud noise) option\n%s</string>
+    <string name="preference_audio_noise_control_sensitivity_summary" translatable="false">Sensitivity for audio (loud noise) capture.\n%s</string>
     <string name="preference_save_location">Save location</string>
     <string name="preference_save_location_summary">Folder to save the photo/video files in</string>
     <string name="preference_using_saf" translatable="false">Storage Access Framework</string> <!-- not translated as it's referenced in the privacy policy, and unclear how this term should be translated -->
-    <string name="preference_using_saf_summary" translatable="false">Whether to use Storage Access Framework for saving photos and videos. This should be enabled to allow saving to external SD cards. On Android 10+ this option must be enabled if you want to save in a folder outside of DCIM.</string>
+    <string name="preference_using_saf_summary" translatable="false">Uses Storage Access Framework to save photos/videos. Needed for external SD cards, or on Android 10+ to save outside DCIM.</string>
     <string name="preference_save_photo_prefix">Save photo prefix</string>
     <string name="preference_save_photo_prefix_summary">The prefix to use for the save filenames for photos</string>
     <string name="preference_save_video_prefix">Save video prefix</string>
     <string name="preference_save_video_prefix_summary">The prefix to use for the save filenames for videos</string>
     <string name="preference_save_zulu_time" translatable="false">Time format for filename</string>
     <string name="preference_save_include_milliseconds" translatable="false">Use milliseconds in filename</string>
-    <string name="preference_save_include_milliseconds_summary" translatable="false">If enabled, filenames will include milliseconds</string>
+    <string name="preference_save_include_milliseconds_summary" translatable="false">Includes milliseconds in filenames.</string>
     <string name="preference_show_when_locked">Show camera when locked</string>
     <string name="preference_show_when_locked_summary">If enabled, RealCamMI will still show above any lockscreen (you\'ll still have to unlock to access Settings, Gallery etc)</string>
     <string name="preference_startup_focus" translatable="false">Perform auto-focus on startup</string>
-    <string name="preference_startup_focus_summary" translatable="false">Whether to auto-focus when RealCamMI is started. If you have the problem of flash turning on when starting, disable this option</string>
+    <string name="preference_startup_focus_summary" translatable="false">Auto-focuses on startup. Disable if flash turns on unexpectedly when starting.</string>
     <string name="preference_lock_video">Lock screen when recording video</string>
     <string name="preference_lock_video_summary">When recording video, the GUI will be locked to prevent accidentally stopping recording. Swipe the screen to unlock. Note that video recording will always stop if the app goes into background or the screen is blanked.</string>
     <string name="preference_rotate_preview">Rotate preview</string>
@@ -166,7 +166,7 @@
     <string name="preference_show_angle_line">Show angle line</string>
     <string name="preference_show_angle_line_summary">Display horizontal level line</string>
     <string name="preference_angle_highlight_color" translatable="false">Angle/altitude highlight color</string>
-    <string name="preference_angle_highlight_color_summary" translatable="false">Highlight color for when camera is nearly level\n%s</string>
+    <string name="preference_angle_highlight_color_summary" translatable="false">Highlight colour for when the camera is nearly level.\n%s</string>
     <string name="preference_show_geo_direction">Show compass direction</string>
     <string name="preference_show_geo_direction_summary">Display the compass direction of the device on screen</string>
     <string name="preference_show_time">Show time</string>
@@ -178,11 +178,11 @@
     <string name="preference_crop_guide">Show a crop guide</string>
     <string name="preference_crop_guide_summary">A crop guide displays a rectangle showing what the specified aspect ratio looks like - useful if you plan to crop the photo/video afterwards to a different aspect ratio. Requires WYSIWYG photo mode, or being in video mode.\n%s</string>
     <string name="preference_show_toasts" translatable="false">Show on-screen messages</string>
-    <string name="preference_show_toasts_summary" translatable="false">Whether to display temporary on-screen info messages</string>
+    <string name="preference_show_toasts_summary" translatable="false">Shows temporary on-screen info messages.</string>
     <string name="preference_thumbnail_animation">Show thumbnail animation</string>
     <string name="preference_thumbnail_animation_summary">Display moving thumbnail animation when taking a photo</string>
     <string name="preference_take_photo_border" translatable="false">Show border when taking photo</string>
-    <string name="preference_take_photo_border_summary" translatable="false">Display a border on the display to indicate taking a photo</string>
+    <string name="preference_take_photo_border_summary" translatable="false">Shows a border on-screen when taking a photo.</string>
     <string name="preference_keep_display_on">Keep display on</string>
     <string name="preference_keep_display_on_summary">If enabled, the screen won\'t switch off while the main RealCamMI UI is active</string>
     <string name="preference_max_brightness">Force maximum brightness</string>
@@ -212,11 +212,11 @@
     <string name="preference_stamp_fontsize">Font size</string>
     <string name="preference_stamp_fontsize_summary">Font size to use when stamping text onto photos\n%s</string>
     <string name="preference_stamp_font_color" translatable="false">Font color</string>
-    <string name="preference_stamp_font_color_summary" translatable="false">Font color to use when stamping text onto photos\n%s</string>
+    <string name="preference_stamp_font_color_summary" translatable="false">Font colour for text stamped on photos.\n%s</string>
     <string name="preference_stamp_style" translatable="false">Text style</string>
-    <string name="preference_stamp_style_summary" translatable="false">Style to use when stamping text onto photos\n%s</string>
+    <string name="preference_stamp_style_summary" translatable="false">Style for text stamped on photos.\n%s</string>
     <string name="preference_background_photo_saving" translatable="false">Use background thread</string>
-    <string name="preference_background_photo_saving_summary" translatable="false">Whether to save photos on a background thread (for faster operation)</string>
+    <string name="preference_background_photo_saving_summary" translatable="false">Saves photos on a background thread for faster operation.</string>
     <string name="video_quality">Video resolution</string>
     <string name="preference_force_video_4k">Force 4K UHD video (only works on some devices)</string>
     <string name="preference_force_video_4k_summary">Enable 3840x2160 resolution for video recording on back camera - this option is a hack that may allow 4K devices on 4K cameras that don\'t expose the option to 3rd party camera apps. This isn\'t guaranteed to work, please test before working.</string>
@@ -231,21 +231,21 @@
     <string name="preference_video_restart">Restart video after max duration</string>
     <string name="preference_video_restart_summary">If the video has stopped after hitting the maximum duration (if set), this option will make the video restart, up to the specified number of times\n%s</string>
     <string name="preference_video_max_filesize" translatable="false">Maximum file size of video</string>
-    <string name="preference_video_max_filesize_summary" translatable="false">The video recording will stop and/or restart (see option below) when the (approximate) maximum file size is reached. Note that many Android devices have a maximum file size for videos (typically around 2GB or 4GB), but this option allows setting a specific value. Note that this option can\'t be used to increase a device\'s built-in maximum.\n%s</string>
+    <string name="preference_video_max_filesize_summary" translatable="false">Video stops or restarts (see option below) at this file size. Some devices already cap file size; this can only lower it, not raise it.\n%s</string>
     <string name="preference_video_restart_max_filesize" translatable="false">Restart on maximum file size</string>
-    <string name="preference_video_restart_max_filesize_summary" translatable="false">Whether to automatically restart when the maximum file size is reached (whether the device default max file size, or user specified)</string>
+    <string name="preference_video_restart_max_filesize_summary" translatable="false">Auto-restarts recording when the max file size is reached.</string>
     <string name="preference_record_audio">Record audio</string>
     <string name="preference_record_audio_summary">Record audio when recording video</string>
     <string name="preference_record_audio_src">Audio source</string>
     <string name="preference_record_audio_src_summary">Microphone to use for recording audio. Note that the exact behaviour of the options depends on how the option is implemented on your device.\n%s</string>
     <string name="preference_record_audio_channels" translatable="false">Audio channels</string>
-    <string name="preference_record_audio_channels_summary" translatable="false">Specify mono or stereo for recording audio (stereo only supported on some devices)\n%s</string>
+    <string name="preference_record_audio_channels_summary" translatable="false">Mono or stereo audio recording (stereo needs device support).\n%s</string>
     <string name="preference_video_flash">Flash while recording video</string>
     <string name="preference_video_flash_summary">If enabled, flash will switch on/off when recording video (can be used to tell camera is still recording at a distance)</string>
     
     <string name="preference_category_online">Misc</string>
     <string name="preference_online_help">Online help</string>
-    <string name="preference_online_help_summary" translatable="false">Launch the Open Camera website in your browser</string>
+    <string name="preference_online_help_summary" translatable="false">Opens the Open Camera website in your browser.</string>
     <string name="preference_use_camera2">Use Camera2 API</string>
     <string name="preference_use_camera2_summary">Enables extra features such as manual modes for exposure, focus, white balance, along with RAW (if supported by the device), but may not work properly on all devices (will cause a restart)</string>
     <string name="preference_about">About</string>
@@ -262,6 +262,11 @@
     <string name="gallery">Gallery</string>
     <string name="exposure">Exposure</string>
     <string name="exposure_lock">Lock exposure</string>
+    <!-- [REALCAMMI FORK 2026-08-31] Metering mode selector button -->
+    <string name="metering_mode">Metering mode</string>
+    <string name="metering_mode_matrix" translatable="false">Metering: Matrix</string>
+    <string name="metering_mode_center_weighted" translatable="false">Metering: Center-weighted</string>
+    <string name="metering_mode_spot" translatable="false">Metering: Spot</string>
     <string name="focus_mode">Focus Mode</string>
     <string name="flash_mode">Flash Mode</string>
     <string name="switch_to_front_camera" translatable="false">Switch to front camera</string>
@@ -293,6 +298,10 @@
     <string name="max_filesize" translatable="false">Max file size</string>
     <string name="mb_abbreviation" translatable="false">MB</string> <!-- symbol short for megabytes -->
     <string name="gb_abbreviation" translatable="false">GB</string> <!-- symbol short for gigabytes -->
+    <!-- [REALCAMMI FORK 2026-08-31] Exposure clipping warning shown next to the histogram -->
+    <string name="exposure_clipping_shadows" translatable="false">⚠ Shadows clipped</string>
+    <string name="exposure_clipping_highlights" translatable="false">⚠ Highlights clipped</string>
+    <string name="exposure_clipping_both" translatable="false">⚠ Shadows &amp; highlights clipped</string>
 
     <string name="audio_control_start" translatable="false">Start audio listening</string>
     <string name="audio_control_stop" translatable="false">Stop audio listening</string>
@@ -317,7 +326,7 @@
     <string name="photo_mode_noise_reduction_full" translatable="false">Noise Reduction</string>
     <string name="preference_category_stamp" translatable="false">Photo Stamp</string>
     <string name="preference_hdr_save_expo" translatable="false">Save all images for HDR mode</string>
-    <string name="preference_hdr_save_expo_summary" translatable="false">If enabled, when using HDR photo mode, the three base exposure images will be saved as well as the final HDR photo. Note this will make saving slower, especially if options like \"Stamp photos\" or Auto-level are also used.</string>
+    <string name="preference_hdr_save_expo_summary" translatable="false">Also saves the 3 base exposures used for HDR, not just the final photo. Slower saving, especially with Stamp or Auto-level enabled.</string>
 
     <string name="no_permission" translatable="false">PERMISSIONS NOT AVAILABLE</string>
     <string name="permission_rationale_title" translatable="false">Permission required</string>
@@ -328,15 +337,15 @@
 
     <string name="preference_category_debugging" translatable="false">Debugging options</string>
     <string name="preference_camera2_fake_flash" translatable="false">Use alternative flash method</string>
-    <string name="preference_camera2_fake_flash_summary" translatable="false">Enable this if your device has buggy flash behaviour with Camera2 API</string>
+    <string name="preference_camera2_fake_flash_summary" translatable="false">Enable if your device has buggy flash behaviour with the Camera2 API.</string>
 
     <string name="preference_expo_bracketing_n_images" translatable="false">Exposure Bracketing</string>
-    <string name="preference_expo_bracketing_n_images_summary" translatable="false">Number of images for exposure bracketing mode\n%s</string>
+    <string name="preference_expo_bracketing_n_images_summary" translatable="false">Number of images for exposure bracketing.\n%s</string>
     <string name="preference_expo_bracketing_stops" translatable="false">Exposure Bracketing Stops</string>
-    <string name="preference_expo_bracketing_stops_summary" translatable="false">How many stops to subtract/add for the darkest/brightest image\n%s</string>
+    <string name="preference_expo_bracketing_stops_summary" translatable="false">Stops to subtract/add for the darkest/brightest image.\n%s</string>
 
     <string name="preference_nr_save" translatable="false">Noise Reduction original images</string>
-    <string name="preference_nr_save_summary" translatable="false">Whether to save original images in noise reduction mode. Note this can make saving photos much slower.\n%s</string>
+    <string name="preference_nr_save_summary" translatable="false">Also saves the original images in noise reduction mode. Slower saving.\n%s</string>
 
     <string name="preference_nr_save_no" translatable="false">Don\'t save original images</string>
     <string name="preference_nr_save_single" translatable="false">Save single original image</string>
@@ -347,7 +356,7 @@
     <string name="video_no_free_space" translatable="false">Not enough free space to record video</string>
     <string name="video_power_critical" translatable="false">Video stopped\nBattery level critically low</string>
     <string name="preference_video_low_power_check" translatable="false">Critical battery check</string>
-    <string name="preference_video_low_power_check_summary" translatable="false">Stop video recording if battery level is critically low. This helps reduce the risk of videos being corrupted if your device suddenly switches off due to running out of power.</string>
+    <string name="preference_video_low_power_check_summary" translatable="false">Stops recording if battery is critically low, to avoid corrupted videos.</string>
 
     <string name="dark" translatable="false">Dark</string> <!-- exposure compensation dark -->
     <string name="bright" translatable="false">Bright</string> <!-- exposure compensation bright -->
@@ -356,31 +365,60 @@
     <string name="camera_error" translatable="false">Serious camera error</string>
 
     <string name="preference_camera2_fast_burst" translatable="false">Enable fast HDR/expo burst</string>
-    <string name="preference_camera2_fast_burst_summary" translatable="false">Allows faster capture of the HDR/expo shots. Disable this if your device has problems when taking photos with HDR or Expo photo modes.</string>
+    <string name="preference_camera2_fast_burst_summary" translatable="false">Speeds up HDR/expo capture. Disable if your device has issues with those modes.</string>
 
     <string name="camera" translatable="false">Camera</string>
     <string name="record_video" translatable="false">Record video</string>
     <string name="selfie" translatable="false">Selfie</string>
 
     <string name="preference_front_camera_mirror" translatable="false">Front camera mirror</string>
-    <string name="preference_front_camera_mirror_summary" translatable="false">Whether to mirror the resultant photos when using the front camera\n%s</string>
+    <string name="preference_front_camera_mirror_summary" translatable="false">Mirrors photos taken with the front camera.\n%s</string>
 
     <string name="preference_calibrate_level" translatable="false">Calibrate level angle</string>
-    <string name="preference_calibrate_level_summary" translatable="false">This option calibrates your device\'s accelerometer, so the auto-level and on-screen level/angle options work correctly</string>
+    <string name="preference_calibrate_level_summary" translatable="false">Calibrates the accelerometer so auto-level and the on-screen level work correctly.</string>
     <string name="preference_calibrate_level_dialog" translatable="false">Please place your device on a flat horizontal surface so that it is level (either in portrait or landscape orientation), and then select Calibrate.\n\nPress Reset to remove the calibration from your device.\n\nPress back button to cancel.</string>
     <string name="preference_calibrate_level_calibrate" translatable="false">Calibrate</string>
     <string name="preference_calibrate_level_reset" translatable="false">Reset</string>
+
+    <!-- [REALCAMMI FORK 2026-08-31] Extra EV compensation (GCam-style numeric entry, not a slider) -->
+    <string name="preference_extra_exposure_compensation">Extra exposure compensation</string>
+    <string name="preference_extra_exposure_compensation_summary" translatable="false">Extra EV compensation added to every photo, on top of metering. Positive or negative number, e.g. 0.3 or -0.5. Default 0.</string>
+
+    <!-- [REALCAMMI FORK 2026-08-31] Color boost fields (GCam-style numeric entries, not sliders) -->
+    <string name="preference_match_photo_look">Match Photo\'s Look…</string>
+    <string name="preference_match_photo_look_summary" translatable="false">Pick a photo to roughly match its colour balance and saturation in the Color Boost fields below. A starting point to fine-tune by hand.</string>
+    <string name="preference_match_photo_look_applied" translatable="false">Color Boost updated: red %.3f, green %.3f, blue %.3f, saturation %.3f</string>
+    <string name="preference_match_photo_look_failed" translatable="false">Couldn\'t read that image</string>
+    <string name="preference_match_photo_look_too_many" translatable="false">Only the first 3 of %d selected photos were used</string>
+    <string name="preference_color_boost_red_scale">Color boost: Red scale</string>
+    <!-- [REALCAMMI FIX 2026-09-16] The stored value is ADDED to 1 in code (applyColorBoostMat():
+         "1+red_scale" is the actual multiplier applied to the channel), not used as the
+         multiplier itself - so the old "e.g. 1.09 = +9% red" example was wrong (typing 1.09 here
+         actually gives a multiplier of 2.09, i.e. +109%, not +9%), and "Default 1.0" was wrong
+         too (the stored default, ColorBoostRedScaleDefault, is "0.000" - which is what keeps the
+         multiplier at 1.0/unchanged). Corrected to describe the field the way it actually behaves. -->
+    <string name="preference_color_boost_red_scale_summary" translatable="false">Red channel multiplier offset, added to 1 (e.g. 0.09 = +9%% red). Default 0.0 (unchanged).</string>
+    <string name="preference_color_boost_green_scale">Color boost: Green scale</string>
+    <string name="preference_color_boost_green_scale_summary" translatable="false">Green channel multiplier offset, added to 1 (e.g. 0.09 = +9%% green). Default 0.0 (unchanged).</string>
+    <string name="preference_color_boost_blue_scale">Color boost: Blue scale</string>
+    <string name="preference_color_boost_blue_scale_summary" translatable="false">Blue channel multiplier offset, added to 1 (e.g. 0.09 = +9%% blue). Default 0.0 (unchanged).</string>
+    <string name="preference_color_boost_offset">Color boost: Offset</string>
+    <string name="preference_color_boost_offset_summary" translatable="false">Fixed offset added to all 3 channels after scaling. Can be negative. Default 0 (unchanged).</string>
+    <string name="preference_color_boost_saturation">Color boost: Saturation</string>
+    <string name="preference_color_boost_saturation_summary" translatable="false">Saturation multiplier applied after colour scaling. Below 1.0 = less saturated, above = more. Default 1.0.</string>
+    <string name="preference_color_boost_hue">Color boost: Hue rotation</string>
+    <string name="preference_color_boost_hue_summary" translatable="false">Rotates all colours around the colour wheel by this many degrees. Default 0 (unchanged).</string>
     <string name="preference_calibrate_level_calibrated" translatable="false">Level calibrated</string>
     <string name="preference_calibrate_level_calibration_reset" translatable="false">Level calibration reset</string>
 
     <string name="photo_mode_dro" translatable="false">DRO</string> <!-- keep short, as this shows in the popup menu -->
 
     <string name="preference_show_pitch_lines" translatable="false">Show pitch lines</string>
-    <string name="preference_show_pitch_lines_summary" translatable="false">Display horizontal pitch lines</string>
+    <string name="preference_show_pitch_lines_summary" translatable="false">Shows horizontal pitch lines.</string>
     <string name="preference_show_geo_direction_lines" translatable="false">Show compass direction lines</string>
-    <string name="preference_show_geo_direction_lines_summary" translatable="false">Display compass direction lines</string>
+    <string name="preference_show_geo_direction_lines_summary" translatable="false">Shows compass direction lines.</string>
     <string name="preference_video_subtitle" translatable="false">Video subtitles</string>
-    <string name="preference_video_subtitle_summary" translatable="false">Create a subtitles (.SRT) file storing date and time; and also GPS info if location/direction data is enabled. (On Android 11+, this option requires More camera controls/Storage Access Framework to be enabled.)\n%s</string>
+    <string name="preference_video_subtitle_summary" translatable="false">Saves an .SRT subtitle file with date/time and GPS info (if enabled). Android 11+ needs SAF enabled.\n%s</string>
 
     <string name="duration_unlimited">Unlimited</string>
     <string name="duration_3s">3 seconds</string>
@@ -408,7 +446,7 @@
     <string name="duration_1h">1 hour</string>
 
     <string name="preference_show_take_photo" translatable="false">Show \"Take Photo\" icon</string>
-    <string name="preference_show_take_photo_summary" translatable="false">Show the icon for taking photos and recording videos. Uncheck if you\'d rather take photos by other methods (e.g., if your device has a hardware shutter button, or using the volume keys).</string>
+    <string name="preference_show_take_photo_summary" translatable="false">Shows the capture icon. Disable if you use a hardware shutter or volume keys instead.</string>
 
     <string name="video_pause" translatable="false">Video paused</string>
     <string name="video_resume" translatable="false">Video resumed</string>
@@ -474,9 +512,9 @@
 
     <string name="preference_category_exif_tags" translatable="false">Custom Exif tags</string>
     <string name="preference_exif_artist" translatable="false">Artist</string>
-    <string name="preference_exif_artist_summary" translatable="false">Text to store in the image metadata for the \"artist\" tag, for non-RAW (JPEG/etc) images only. (Leave blank for none.)</string>
+    <string name="preference_exif_artist_summary" translatable="false">Text stored in the \"artist\" Exif tag (non-RAW photos only). Leave blank for none.</string>
     <string name="preference_exif_copyright" translatable="false">Copyright</string>
-    <string name="preference_exif_copyright_summary" translatable="false">Text to store in the image metadata for the \"copyright\" tag, for non-RAW (JPEG/etc) images. (Leave blank for none.)</string>
+    <string name="preference_exif_copyright_summary" translatable="false">Text stored in the \"copyright\" Exif tag (non-RAW photos only). Leave blank for none.</string>
 
     <string name="processing" translatable="false">Processing…</string>
 
@@ -536,14 +574,14 @@
     <string name="flash_frontscreen_torch" translatable="false">Screen Torch</string>
 
     <string name="preference_antibanding" translatable="false">Anti-banding</string>
-    <string name="preference_antibanding_summary" translatable="false">Algorithms to help with light flickering.\n%s</string>
+    <string name="preference_antibanding_summary" translatable="false">Algorithm to reduce light flicker.\n%s</string>
     <string name="anti_banding_auto" translatable="false">Auto</string>
     <string name="anti_banding_50hz" translatable="false">50Hz</string>
     <string name="anti_banding_60hz" translatable="false">60Hz</string>
     <string name="anti_banding_off" translatable="false">Off</string>
 
     <string name="preference_ghost_image" translatable="false">Ghost image</string>
-    <string name="preference_ghost_image_summary" translatable="false">Display an image over the preview, to help with alignment.\n%s</string>
+    <string name="preference_ghost_image_summary" translatable="false">Overlays an image on the preview to help with alignment.\n%s</string>
     <string name="preference_ghost_image_off" translatable="false">Off</string>
     <string name="preference_ghost_image_last" translatable="false">Last photo taken</string>
     <string name="preference_ghost_image_selected" translatable="false">Selected image</string>
@@ -552,7 +590,7 @@
     <string name="saf_permission_failed_open_image" translatable="false">Unable to open this image</string>
 
     <string name="preference_camera2_photo_video_recording" translatable="false">Allow photos whilst recording video</string>
-    <string name="preference_camera2_photo_video_recording_summary" translatable="false">Allows taking photos whilst recording videos. Disable this if there are problems with video recording with Camera2 API enabled on your device.</string>
+    <string name="preference_camera2_photo_video_recording_summary" translatable="false">Allows taking photos while recording video. Disable if this causes issues on your device.</string>
 
     <string name="preference_record_audio_src_camcorder" translatable="false">Camcorder</string>
     <string name="preference_record_audio_src_mic" translatable="false">External mic (if present)</string>
@@ -591,7 +629,7 @@
     <string name="no_burst" translatable="false">no burst</string> <!-- string for burst mode not being supported for a resolution -->
 
     <string name="preference_show_video_max_amp" translatable="false">Show audio level meter</string>
-    <string name="preference_show_video_max_amp_summary" translatable="false">Whether to show on-screen audio level when recording video</string>
+    <string name="preference_show_video_max_amp_summary" translatable="false">Shows on-screen audio level while recording video.</string>
 
     <string name="photo_mode_focus_bracketing" translatable="false">Focus {}</string> <!-- keep short, as this shows in the popup menu -->
     <string name="photo_mode_focus_bracketing_full" translatable="false">Focus Bracketing</string>
@@ -611,21 +649,21 @@
     <string name="accuracy_unknown" translatable="false">Unknown</string>
 
     <string name="preference_units_distance" translatable="false">Distance unit</string>
-    <string name="preference_units_distance_summary" translatable="false">Used for GPS altitude for photo stamp and video subtitles\n%s</string>
+    <string name="preference_units_distance_summary" translatable="false">Units for GPS altitude in photo stamps and video subtitles.\n%s</string>
     <string name="preference_units_distance_m" translatable="false">Metres</string>
     <string name="preference_units_distance_ft" translatable="false">Feet</string>
     <string name="feet_abbreviation" translatable="false">ft</string> <!-- symbol short for feet -->
 
     <string name="preference_show_whats_new" translatable="false">Shows What\'s New dialog</string>
-    <string name="preference_show_whats_new_summary" translatable="false">Whether to display information on new features and improvements when the application has updated</string>
+    <string name="preference_show_whats_new_summary" translatable="false">Shows what\'s new after the app updates.</string>
 
     <string name="preference_edge_mode" translatable="false">Edge mode algorithm</string>
-    <string name="preference_edge_mode_summary" translatable="false">Algorithm that the camera driver should use for applying edge enhancement. Edge enhancement improves sharpness and details in the captured image. (This setting is ignored in NR photo mode.)\n%s</string>
+    <string name="preference_edge_mode_summary" translatable="false">Camera driver algorithm for edge enhancement (sharpness/detail). Ignored in NR photo mode.\n%s</string>
 
     <string name="preference_screen_processing_settings" translatable="false">Processing settings…</string>
 
     <string name="preference_noise_reduction_mode" translatable="false">Noise reduction algorithm</string>
-    <string name="preference_noise_reduction_mode_summary" translatable="false">Camera driver algorithm to reduce digital noise from the capture process, especially in low-light environments. This setting is ignored in photo NR mode.\n%s</string>
+    <string name="preference_noise_reduction_mode_summary" translatable="false">Camera driver algorithm to reduce noise, especially in low light. Ignored in photo NR mode.\n%s</string>
     <string name="noise_reduction_mode_default" translatable="false">Default</string>
     <string name="noise_reduction_mode_off" translatable="false">Off</string>
     <string name="noise_reduction_mode_minimal" translatable="false">Minimal</string>
@@ -633,7 +671,7 @@
     <string name="noise_reduction_mode_high_quality" translatable="false">High Quality</string>
 
     <string name="preference_focus_assist" translatable="false">Focus assist</string>
-    <string name="preference_focus_assist_summary" translatable="false">Whether to zoom in when adjusting manual focus distance\n%s</string>
+    <string name="preference_focus_assist_summary" translatable="false">Zooms in while adjusting manual focus distance.\n%s</string>
     <string name="preference_focus_assist_off" translatable="false">Off</string>
     <string name="preference_focus_assist_2x" translatable="false">2x</string>
     <string name="preference_focus_assist_4x" translatable="false">4x</string>
@@ -713,13 +751,13 @@
     <string name="preference_audio_noise_control_sensitivity_m3" translatable="false">-3 (low sensitivity)</string>
 
     <string name="preference_hdr_contrast_enhancement" translatable="false">HDR contrast enhancement</string>
-    <string name="preference_hdr_contrast_enhancement_summary" translatable="false">When to use a contrast enhancement algorithm for HDR. This can improve the appearance in cases where there is a very high dynamic range in the scene, and also gives a \"HDR look\" to the results.\n%s</string>
+    <string name="preference_hdr_contrast_enhancement_summary" translatable="false">Contrast enhancement for HDR mode. Improves high-dynamic-range scenes and gives a stronger \"HDR look\".</string>
     <string name="preference_hdr_contrast_enhancement_off" translatable="false">Off</string>
     <string name="preference_hdr_contrast_enhancement_smart" translatable="false">Smart</string>
     <string name="preference_hdr_contrast_enhancement_always" translatable="false">Always</string>
 
     <string name="preference_video_output_format" translatable="false">Video format</string>
-    <string name="preference_video_output_format_summary" translatable="false">Video and audio file format and codecs\n%s</string>
+    <string name="preference_video_output_format_summary" translatable="false">Video/audio file format and codecs.\n%s</string>
 
     <string name="preference_video_output_format_default" translatable="false">Default</string>
     <string name="preference_video_output_format_mpeg4_h264" translatable="false">MPEG4 H264</string>
@@ -730,14 +768,19 @@
     <string name="preference_screen_settings_manager" translatable="false">Settings manager</string>
 
     <string name="preference_save_settings" translatable="false">Save settings</string>
-    <string name="preference_save_settings_summary" translatable="false">Saves all of RealCamMI\'s settings to a file</string>
+    <string name="preference_save_settings_summary" translatable="false">Saves all of RealCamMI\'s settings to a file.</string>
     <string name="preference_save_settings_filename" translatable="false">Saved settings name</string>
 
     <string name="preference_restore_settings" translatable="false">Restore settings</string>
-    <string name="preference_restore_settings_summary" translatable="false">Restores previously saved settings. This will overwrite all current settings with the saved settings!</string>
+    <string name="preference_restore_settings_summary" translatable="false">Restores previously saved settings, overwriting current settings.</string>
     <string name="preference_restore_settings_question" translatable="false">This option allows you to select one of the settings files that you previously saved. Be warned that selecting a file to load will overwrite all current settings!</string>
 
     <string name="saved_settings" translatable="false">Saved settings</string>
+    <!-- [REALCAMMI FORK 2026-09-20] Shown instead of saved_settings above when the file was
+         written via MediaStore to the public Downloads/RealCamMI folder (the normal case on
+         every device this fork targets - minSdkVersion 30 always has MediaStore.Downloads
+         available). %s is the filename. -->
+    <string name="saved_settings_downloads" translatable="false">Saved to Download/RealCamMI/%s</string>
     <string name="save_settings_failed" translatable="false">Failed to save settings</string>
     <string name="restore_settings_failed" translatable="false">Failed to restore settings</string>
     <string name="open_files_saf_exception_generic" translatable="false">No file dialog found on this device, option is not supported</string>
@@ -758,23 +801,23 @@
     <string name="preference_ui_placement_top" translatable="false">Icons along top (portrait)</string>
 
     <string name="preference_show_face_detection" translatable="false">Show face detection icon</string>
-    <string name="preference_show_face_detection_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling face detection</string>
+    <string name="preference_show_face_detection_summary" translatable="false">Shows an on-screen icon to toggle face detection.</string>
     <string name="face_detection_enable" translatable="false">Enable face detection</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="face_detection_disable" translatable="false">Disable face detection</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="face_detection_enabled" translatable="false">Face detection enabled</string>
     <string name="face_detection_disabled" translatable="false">Face detection disabled</string>
 
     <string name="preference_show_auto_level" translatable="false">Show auto-level icon</string>
-    <string name="preference_show_auto_level_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling auto-level. When auto-level is enabled, photos will be rotated so they are automatically level with the horizon.</string>
+    <string name="preference_show_auto_level_summary" translatable="false">Shows an on-screen icon to toggle auto-level (levels photos to the horizon).</string>
     <string name="auto_level_enable" translatable="false">Enable auto-level</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="auto_level_disable" translatable="false">Disable auto-level</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
 
 	<string name="preference_color_correction" translatable="false">Color contrast boost</string>
     <string name="preference_show_color_correction" translatable="false">Show color contrast boost icon</string>
-    <string name="preference_show_color_correction_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling color contrast boost. When enabled, a slight contrast color boost will be applied as a post-processing step after capture.</string>
+    <string name="preference_show_color_correction_summary" translatable="false">Shows an on-screen icon to toggle colour contrast boost.</string>
     <string name="color_correction_enable" translatable="false">Enable color contrast boost</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="color_correction_disable" translatable="false">Disable color contrast boost</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
-    <string name="preference_color_correction_summary" translatable="false">Applies a slight color contrast to the image.; the photo is captured at full quality so this doesn\'t affect the saved image quality)</string>
+    <string name="preference_color_correction_summary" translatable="false">Applies a +20% contrast boost as post-processing, after full-quality capture.</string>
     
     <!-- [REALCAMMI FORK] OpenCV button content descriptions -->
     <string name="opencv_sharpen_enable" translatable="false">Enable sharpening</string>
@@ -789,27 +832,27 @@
     <string name="depth_blur_disable" translatable="false">Disable depth effect (bokeh)</string>
 
     <string name="preference_show_depth_blur" translatable="false">Show depth effect (bokeh) icon</string>
-    <string name="preference_show_depth_blur_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling the depth effect (bokeh)</string>
+    <string name="preference_show_depth_blur_summary" translatable="false">Shows an on-screen icon to toggle depth effect (bokeh).</string>
 
     <string name="preference_show_stamp" translatable="false">Show stamp photo icon</string>
-    <string name="preference_show_stamp_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling photo stamp</string>
+    <string name="preference_show_stamp_summary" translatable="false">Shows an on-screen icon to toggle photo stamp.</string>
     <string name="stamp_enable" translatable="false">Enable photo stamp</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="stamp_disable" translatable="false">Disable photo stamp</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="stamp_enabled" translatable="false">Photo stamp enabled</string>
     <string name="stamp_disabled" translatable="false">Photo stamp disabled</string>
 
     <string name="preference_show_textstamp" translatable="false">Show custom text stamp photo icon</string>
-    <string name="preference_show_textstamp_summary" translatable="false">Whether to show an on-screen icon for specifying custom text to be stamped onto the photo</string>
+    <string name="preference_show_textstamp_summary" translatable="false">Shows an on-screen icon to set custom stamp text.</string>
 
     <string name="preference_show_white_balance_lock" translatable="false">Show auto white balance lock icon</string>
-    <string name="preference_show_white_balance_lock_summary" translatable="false">Whether to show an on-screen icon for locking or unlocking auto white balance</string>
+    <string name="preference_show_white_balance_lock_summary" translatable="false">Shows an on-screen icon to lock/unlock auto white balance.</string>
     <string name="white_balance_lock" translatable="false">Lock white balance</string>
     <string name="white_balance_unlock" translatable="false">Unlock white balance</string>
     <string name="white_balance_locked" translatable="false">White balance locked</string>
     <string name="white_balance_unlocked" translatable="false">White balance unlocked</string>
 
     <string name="preference_show_exposure_lock" translatable="false">Show auto exposure lock icon</string>
-    <string name="preference_show_exposure_lock_summary" translatable="false">Whether to show an on-screen icon for locking or unlocking exposure</string>
+    <string name="preference_show_exposure_lock_summary" translatable="false">Shows an on-screen icon to lock/unlock exposure.</string>
     <string name="exposure_unlock" translatable="false">Unlock exposure</string>
 
     <string name="preference_nr_mode_low_light_message" translatable="false">Low light mode: please hold the camera steady</string>
@@ -819,7 +862,7 @@
 
     <string name="preference_screen_remote_control" translatable="false">Bluetooth LE remote control…</string>
     <string name="preference_enable_remote" translatable="false">Enable Bluetooth LE remote control</string>
-    <string name="preference_enable_remote_summary" translatable="false">Enable Bluetooth LE (BLE) remote control devices</string>
+    <string name="preference_enable_remote_summary" translatable="false">Enables Bluetooth LE (BLE) remote control devices.</string>
     <string name="preference_remote_type" translatable="false">Remote device type</string>
 
     <string name="ble_not_supported" translatable="false">BLE not supported</string>
@@ -827,9 +870,9 @@
     <string name="bluetooth_not_supported" translatable="false">Bluetooth not supported.</string>
     <string name="unknown_device" translatable="false">Unknown device</string>
     <string name="preference_remote_disconnect_screen_dim" translatable="false">Dim screen if remote disconnects</string>
-    <string name="preference_remote_disconnect_screen_dim_summary" translatable="false">Hint: set default brightness to minimum level before starting RealCamMI.</string>
+    <string name="preference_remote_disconnect_screen_dim_summary" translatable="false">Tip: set default brightness to minimum before starting RealCamMI.</string>
     <string name="preference_water_type" translatable="false">Use Saltwater for depth calculations</string>
-    <string name="preference_water_type_summary" translatable="false">For underwater housings, improves accuracy if correct water type is selected.</string>
+    <string name="preference_water_type_summary" translatable="false">Improves accuracy for underwater housings when the correct water type is set.</string>
     <string name="remote_connected" translatable="false">Remote connected</string>
 
     <string name="preference_remote_type_kraken" translatable="false">Kraken</string>
@@ -841,12 +884,12 @@
     <string name="preference_stamp_geo_address_no" translatable="false">Don\'t display address</string>
 
     <string name="preference_show_store_location" translatable="false">Show store location data icon</string>
-    <string name="preference_show_store_location_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling location data (geotagging)</string>
+    <string name="preference_show_store_location_summary" translatable="false">Shows an on-screen icon to toggle location data (geotagging).</string>
     <string name="preference_location_enable" translatable="false">Store location data</string>
     <string name="preference_location_disable" translatable="false">Stop storing location data</string>
 
     <string name="preference_histogram" translatable="false">Show a histogram</string>
-    <string name="preference_histogram_summary" translatable="false">Whether to display histogram of the colors shown on-screen\n%s</string>
+    <string name="preference_histogram_summary" translatable="false">Shows an on-screen histogram of preview colours.\n%s</string>
     <string name="preference_histogram_off" translatable="false">Off</string>
     <string name="preference_histogram_rgb" translatable="false">RGB Colors</string>
     <string name="preference_histogram_luminance" translatable="false">Luminance</string>
@@ -855,7 +898,7 @@
     <string name="preference_histogram_lightness" translatable="false">Lightness (Average of min-max)</string>
 
     <string name="preference_zebra_stripes" translatable="false">Show zebra stripes</string>
-    <string name="preference_zebra_stripes_summary" translatable="false">If this option is enabled, zebra stripes will be drawn on-screen showing where the camera preview is over exposed.\n%s</string>
+    <string name="preference_zebra_stripes_summary" translatable="false">Shows zebra stripes over overexposed areas of the preview.\n%s</string>
     <string name="preference_zebra_stripes_off" translatable="false">Off</string>
     <string name="preference_zebra_stripes_70pc" translatable="false">70%</string> <!-- shouldn't escape %, not needed when shown in ListPreference -->
     <string name="preference_zebra_stripes_80pc" translatable="false">80%</string> <!-- shouldn't escape %, not needed when shown in ListPreference -->
@@ -868,11 +911,11 @@
     <string name="preference_zebra_stripes_100pc" translatable="false">100%</string> <!-- shouldn't escape %, not needed when shown in ListPreference -->
 
     <string name="preference_focus_peaking" translatable="false">Focus peaking</string>
-    <string name="preference_focus_peaking_summary" translatable="false">If this option is enabled, highlights will be shown on in-focus edges (contours). This is primarily useful for manual focus, and can be used to help determine which regions of the image are in focus.\n%s</string>
+    <string name="preference_focus_peaking_summary" translatable="false">Highlights in-focus edges. Useful for manual focus and checking what\'s sharp.\n%s</string>
     <string name="preference_focus_peaking_off" translatable="false">Off</string>
     <string name="preference_focus_peaking_on" translatable="false">On</string>
     <string name="preference_focus_peaking_color" translatable="false">Focus peaking color</string>
-    <string name="preference_focus_peaking_color_summary" translatable="false">Which color to use for highlighting the in-focus edges\n%s</string>
+    <string name="preference_focus_peaking_color_summary" translatable="false">Colour used to highlight in-focus edges.\n%s</string>
 
     <string name="remaining" translatable="false">Remaining</string> <!-- images remaining for "processing" -->
 
@@ -880,17 +923,17 @@
 
     <string name="cycle_flash" translatable="false">Cycle flash</string>
     <string name="preference_show_cycle_flash" translatable="false">Show flash icon</string>
-    <string name="preference_show_cycle_flash_summary" translatable="false">Whether to show an on-screen icon for cycling through the flash options, instead of displaying flash options on the popup menu. Note that torch is not available if using this icon.</string>
+    <string name="preference_show_cycle_flash_summary" translatable="false">Shows an icon to cycle flash options on-screen instead of using the popup menu. Torch isn\'t available this way.</string>
 
     <string name="preference_raw_expo_bracketing" translatable="false">Allow RAW for expo bracketing</string>
-    <string name="preference_raw_expo_bracketing_summary" translatable="false">Whether the RAW option should also apply for expo bracketing photo mode (or for HDR mode when \"Save all images for HDR mode\" is enabled). If this option is disabled, only non-RAW (JPEG/etc) images will be saved in those photo modes.</string>
+    <string name="preference_raw_expo_bracketing_summary" translatable="false">Also saves RAW for expo bracketing (or HDR with \"Save all images\" enabled). If off, only JPEG/etc. is saved in those modes.</string>
 
     <string name="preference_raw_focus_bracketing" translatable="false">Allow RAW for focus bracketing</string>
-    <string name="preference_raw_focus_bracketing_summary" translatable="false">Whether the RAW option should also apply for focus bracketing photo mode. If this option is disabled, only non-RAW (JPEG/etc) images will be saved in focus bracketing photo modes.</string>
+    <string name="preference_raw_focus_bracketing_summary" translatable="false">Also saves RAW for focus bracketing. If off, only JPEG/etc. is saved in that mode.</string>
 
     <string name="cycle_raw" translatable="false">Cycle RAW modes</string>
     <string name="preference_show_cycle_raw" translatable="false">Show RAW icon</string>
-    <string name="preference_show_cycle_raw_summary" translatable="false">Whether to show an on-screen icon for cycling through the RAW modes</string>
+    <string name="preference_show_cycle_raw_summary" translatable="false">Shows an on-screen icon to cycle through RAW modes.</string>
 
     <string name="bluetooth_current_remote" translatable="false">Current remote:</string>
     <string name="bluetooth_scan" translatable="false">Scan</string>
@@ -907,12 +950,12 @@
     <string name="failed_to_process_panorama" translatable="false">Failed to create Panorama image</string>
 
     <string name="preference_panorama_crop" translatable="false">Panorama auto-crop</string>
-    <string name="preference_panorama_crop_summary" translatable="false">For panorama mode, whether to remove the wavy boundaries\n%s</string>
+    <string name="preference_panorama_crop_summary" translatable="false">Crops the wavy edges off panorama photos.\n%s</string>
 
     <string name="panorama_info" translatable="false">To take a panorama image, hold your device in portrait orientation, and click to take a photo to start the panorama. Then rotate your device either left or right to move the centred white circle over the blue dot. After each new image is captured, keep rotating your device to cover each new blue dot that appears in turn.\n\nClick the tick icon to save the panorama, or the cross icon to cancel.\n\nNote that panorama photos can take time to process and save.</string>
 
     <string name="preference_panorama_save" translatable="false">Panorama original images</string>
-    <string name="preference_panorama_save_summary" translatable="false">Whether to save original images in panorama mode. Note this will make saving panorama photos slower. Also allows the option to save an XML file which can be useful reporting problems with panorama.\n%s</string>
+    <string name="preference_panorama_save_summary" translatable="false">Also saves original images in panorama mode (slower), with an optional debug XML file.\n%s</string>
 
     <string name="preference_panorama_save_no" translatable="false">Don\'t save original images</string>
     <string name="preference_panorama_save_all" translatable="false">Save original images</string>
@@ -922,16 +965,14 @@
 
     <string name="exposure_compensation_seekbar" translatable="false">Seekbar to change exposure compensation</string>
 
-    <string name="preference_image_format_summary" translatable="false">Select the file format used for saving photos. This affects \"standard\" (not RAW) photos. Ultra HDR not supported for NR, HDR, Pano, X- modes. Note that PNG format is not truly lossless, instead it is converted from a JPEG at 100%% quality.\n%s</string>
+    <string name="preference_image_format_summary" translatable="false">File format for standard (non-RAW) photos. Ultra HDR isn\'t supported for NR, HDR, Pano or X- modes. PNG is converted from a 100%% quality JPEG, not truly lossless.\n%s</string>
 
     <string name="preference_camera_api" translatable="false">Camera API</string>
-    <string name="preference_camera_api_summary" translatable="false">Select Camera2 API to enable extra features such as manual modes for exposure, focus, white balance, along with RAW (if supported by the device). Changing the API will cause a restart.\n%s</string>
+    <string name="preference_camera_api_summary" translatable="false">Camera2 API enables manual exposure/focus/white balance and RAW (if supported). Changing this restarts the app.\n%s</string>
     <string name="preference_camera_api_old" translatable="false">Original camera API</string>
     <string name="preference_camera_api_camera2" translatable="false">Camera2 API</string>
 
-    <string name="preference_audio_control_summary" translatable="false">Take photo/video when a noise is detected.
-        When enabled, use the on-screen microphone button to start/stop listening.
-        \n%s</string>
+    <string name="preference_audio_control_summary" translatable="false">Takes a photo/video when a noise is detected. Use the on-screen mic icon to start/stop listening.\n%s</string>
 
     <string name="intro_text" translatable="false">Touch to focus and press shutter button to take photos.
         \n\nTo save to SD cards, see Settings/More camera controls/\"Storage Access Framework\".
@@ -941,7 +982,7 @@
     <string name="preference_select_remote" translatable="false">Select remote device</string>
 	
     <string name="preference_video_log" translatable="false">Image profile</string>
-    <string name="preference_video_log_summary" translatable="false">Set standard or flat picture profile (applies to both photo and video)\n%s</string>
+    <string name="preference_video_log_summary" translatable="false">Standard or flat picture profile (applies to photo and video).\n%s</string>
     <string name="preference_video_log_off" translatable="false">Off</string>
     <string name="preference_video_log_fine" translatable="false">Log (Fine)</string>
     <string name="preference_video_log_low" translatable="false">Log (Low)</string>
@@ -959,7 +1000,7 @@
     <string name="preference_video_jtlog2" translatable="false">JTLog2</string>
     <string name="preference_video_slog3c" translatable="false">Slog3c</string>
     <string name="preference_video_profile_gamma" translatable="false">Video gamma value</string>
-    <string name="preference_video_profile_gamma_summary" translatable="false">Gamma value to use for video if video picture profile is set to Gamma\n%s</string>
+    <string name="preference_video_profile_gamma_summary" translatable="false">Gamma value used when the video profile is set to Gamma.\n%s</string>
     <string name="preference_video_profile_gamma_1_6" translatable="false">1.6</string>
     <string name="preference_video_profile_gamma_1_8" translatable="false">1.8</string>
     <string name="preference_video_profile_gamma_1_9" translatable="false">1.9</string>
@@ -971,18 +1012,50 @@
     <string name="preference_video_profile_gamma_2_6" translatable="false">2.6</string>
     <string name="preference_video_profile_gamma_2_8" translatable="false">2.8</string>
 
+    <!-- [REALCAMMI FORK 2026-09-02] Image Profile blend strength -->
+    <string name="preference_image_profile_strength">Image profile strength</string>
+    <string name="preference_image_profile_strength_summary" translatable="false">How strongly the Image Profile curve is applied. 0%% = off, 100%% = full effect. Default 10%% (100%% looks exaggerated). Doesn\'t affect video.\n%s</string>
+    <string name="preference_image_profile_strength_0" translatable="false">Off (0%)</string>
+    <string name="preference_image_profile_strength_5" translatable="false">5%</string>
+    <string name="preference_image_profile_strength_10" translatable="false">10%</string>
+    <string name="preference_image_profile_strength_20" translatable="false">20%</string>
+    <string name="preference_image_profile_strength_30" translatable="false">30%</string>
+    <string name="preference_image_profile_strength_40" translatable="false">40%</string>
+    <string name="preference_image_profile_strength_50" translatable="false">50%</string>
+    <string name="preference_image_profile_strength_60" translatable="false">60%</string>
+    <string name="preference_image_profile_strength_70" translatable="false">70%</string>
+    <string name="preference_image_profile_strength_80" translatable="false">80%</string>
+    <string name="preference_image_profile_strength_90" translatable="false">90%</string>
+    <string name="preference_image_profile_strength_100" translatable="false">100% (full)</string>
+
+    <!-- [REALCAMMI FORK 2026-09-04] Sharpness (OpenCV) blend strength -->
+    <string name="preference_sharpness_strength">Sharpness strength</string>
+    <string name="preference_sharpness_strength_summary" translatable="false">How strongly \"Sharpening (OpenCV)\" is applied when its icon is on. Doesn\'t affect the always-on baseline sharpening. 0%% = none, 100%% = full effect. Default 10%%.\n%s</string>
+    <string name="preference_sharpness_strength_0" translatable="false">Off (0%)</string>
+    <string name="preference_sharpness_strength_5" translatable="false">5%</string>
+    <string name="preference_sharpness_strength_10" translatable="false">10%</string>
+    <string name="preference_sharpness_strength_20" translatable="false">20%</string>
+    <string name="preference_sharpness_strength_30" translatable="false">30%</string>
+    <string name="preference_sharpness_strength_40" translatable="false">40%</string>
+    <string name="preference_sharpness_strength_50" translatable="false">50%</string>
+    <string name="preference_sharpness_strength_60" translatable="false">60%</string>
+    <string name="preference_sharpness_strength_70" translatable="false">70%</string>
+    <string name="preference_sharpness_strength_80" translatable="false">80%</string>
+    <string name="preference_sharpness_strength_90" translatable="false">90%</string>
+    <string name="preference_sharpness_strength_100" translatable="false">100% (full)</string>
+
     <string name="preference_immersive_mode_off" translatable="false">Off</string>
     <string name="preference_immersive_mode_navigation" translatable="false">Hide on-screen virtual navigation buttons</string>
     <string name="preference_immersive_mode_gui" translatable="false">Hide GUI</string>
     <string name="preference_immersive_mode_everything" translatable="false">Hide everything</string>
 
     <string name="preference_ghost_image_alpha" translatable="false">Ghost image opacity</string>
-    <string name="preference_ghost_image_alpha_summary" translatable="false">Alpha value to use for ghost images. A lower value means more transparent, higher means more opaque.\n%s</string>
+    <string name="preference_ghost_image_alpha_summary" translatable="false">Transparency of the ghost image. Lower = more transparent.\n%s</string>
 
     <string name="preference_zebra_stripes_foreground_color" translatable="false">Zebra stripes foreground color</string>
-    <string name="preference_zebra_stripes_foreground_color_summary" translatable="false">Color to use for the foreground stripe when showing zebra stripes.\n%s</string>
+    <string name="preference_zebra_stripes_foreground_color_summary" translatable="false">Foreground colour for zebra stripes.\n%s</string>
     <string name="preference_zebra_stripes_background_color" translatable="false">Zebra stripes background color</string>
-    <string name="preference_zebra_stripes_background_color_summary" translatable="false">Color to use for the background stripe when showing zebra stripes.\n%s</string>
+    <string name="preference_zebra_stripes_background_color_summary" translatable="false">Background colour for zebra stripes.\n%s</string>
 
     <string name="preference_zebra_stripes_color_black" translatable="false">Black</string>
     <string name="preference_zebra_stripes_color_red" translatable="false">Red</string>
@@ -997,13 +1070,13 @@
     <string name="switch_to_unknown_camera" translatable="false">Switch camera</string>
     <string name="switch_multi_camera" translatable="false">Switch between multiple cameras</string>
     <string name="preference_multi_cam_button" translatable="false">Multiple cameras icon</string>
-    <string name="preference_multi_cam_button_summary" translatable="false">If enabled, use separate buttons to switch between front/back cameras, and to switch between multiple front/back facing cameras. If disabled, the Switch Camera icon will cycle through all cameras.</string>
+    <string name="preference_multi_cam_button_summary" translatable="false">Uses separate buttons for front/back and multi-camera switching. If off, one icon cycles through all cameras.</string>
 
     <string name="preference_show_camera_id" translatable="false">Show camera ID</string>
-    <string name="preference_show_camera_id_summary" translatable="false">Display the current camera ID number on screen</string>
+    <string name="preference_show_camera_id_summary" translatable="false">Shows the current camera ID on-screen.</string>
 
     <string name="preference_allow_long_press" translatable="false">Allow long press actions</string>
-    <string name="preference_allow_long_press_summary" translatable="false">Whether to allow long press actions (e.g., long press on gallery to change save location).</string>
+    <string name="preference_allow_long_press_summary" translatable="false">Allows long-press actions (e.g. long-press gallery to change save location).</string>
 
     <string name="aperture" translatable="false">Aperture</string>
 
@@ -1013,7 +1086,7 @@
     <string name="error_features_slow_motion" translatable="false">Slow motion</string>
 
     <string name="preference_comment_ypr" translatable="false">Store yaw, pitch and roll</string>
-    <string name="preference_comment_ypr_summary" translatable="false">Store the yaw, pitch and roll of the device in the photo\'s Exif user comment, for non-RAW (JPEG/etc) images only</string>
+    <string name="preference_comment_ypr_summary" translatable="false">Stores device yaw/pitch/roll in the Exif comment (non-RAW photos only).</string>
 
     <string name="array_seekbar_preference_seekbar" translatable="false">Seekbar to change current preference value</string>
 
@@ -1022,7 +1095,7 @@
     <string name="preference_audio_control_voice" translatable="false">Voice command: \"cheese\"</string> <!-- note that cheese shouldn't be translated, as we listen for this no matter what language is being used -->
 
     <string name="preference_camera2_dummy_capture_hack" translatable="false">Enable dummy capture HDR/expo fix</string>
-    <string name="preference_camera2_dummy_capture_hack_summary" translatable="false">Try enabling this if your device has problems when taking photos with HDR or Expo photo modes (if expo images come out with same exposures). Only relevant if fast HDR/expo option below is also enabled.</string>
+    <string name="preference_camera2_dummy_capture_hack_summary" translatable="false">Try this if HDR/expo shots come out with the same exposure. Only relevant with fast HDR/expo also enabled.</string>
 
     <string name="permission_rationale_bluetooth_scan_connect" translatable="false">Bluetooth scan/connect permissions are required for discovering and connecting to Bluetooth LE remote control devices.</string>
     <string name="unknown_device_no_permission" translatable="false">Unknown device (bluetooth connect permission not available)</string>
@@ -1039,14 +1112,14 @@
     <string name="photo_mode_x_beauty_full" translatable="false">Extension: Beauty / Face Retouch</string>
 
     <string name="preference_hdr_tonemapping" translatable="false">HDR tonemapping</string>
-    <string name="preference_hdr_tonemapping_summary" translatable="false">Algorithm to use for tonemapping in HDR photo mode\n%s</string>
+    <string name="preference_hdr_tonemapping_summary" translatable="false">Tonemapping algorithm for HDR mode.\n%s</string>
     <string name="preference_hdr_tonemapping_clamp" translatable="false">Simple clamp</string>
     <string name="preference_hdr_tonemapping_exponential" translatable="false">Exponential</string>
     <string name="preference_hdr_tonemapping_default" translatable="false">Default</string>
     <string name="preference_hdr_tonemapping_aces" translatable="false">ACES</string>
 
     <string name="preference_remove_device_exif" translatable="false">Remove device Exif data</string>
-    <string name="preference_remove_device_exif_summary" translatable="false">Whether to remove device Exif metadata from non-RAW (JPEG/etc) photos. This will not remove Exif tags applied by other settings that apply Exif metadata (e.g. location/geotagging). Those other options are independent and will override this setting. RAW/DNG and videos are not affected.\n%s</string>
+    <string name="preference_remove_device_exif_summary" translatable="false">Removes device Exif metadata from non-RAW photos. Doesn\'t override other settings that add Exif data (e.g. location). RAW and video aren\'t affected.\n%s</string>
     <string name="preference_remove_device_exif_off" translatable="false">Don\'t remove device Exif data</string>
     <string name="preference_remove_device_exif_on" translatable="false">Remove device Exif data</string>
     <string name="preference_remove_device_exif_keep_datetime" translatable="false">Remove except date/time</string>
@@ -1054,34 +1127,49 @@
     <string name="choose_camera" translatable="false">Choose camera:</string>
 
     <string name="preference_show_focus_peaking" translatable="false">Show focus peaking icon</string>
-    <string name="preference_show_focus_peaking_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling focus peaking. When focus peaking is enabled, highlights will be shown on in-focus edges (contours). See Settings/Camera preview/"Focus peaking".</string>
+    <string name="preference_show_focus_peaking_summary" translatable="false">Shows an on-screen icon to toggle focus peaking, which highlights in-focus edges. See Camera preview/\"Focus peaking\".</string>
     <string name="focus_peaking_enable" translatable="false">Enable focus peaking</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="focus_peaking_disable" translatable="false">Disable focus peaking</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
 
     <string name="preference_photo_optimise_focus" translatable="false">Optimise focus for…</string>
-    <string name="preference_photo_optimise_focus_summary" translatable="false">When taking photos, whether to optimise for latency or quality. Only relevant when using continuous focus mode. Optimising for quality ensures that the scene is focused, but may result in a delay in taking photos.\n%s</string>
+    <string name="preference_photo_optimise_focus_summary" translatable="false">Optimise for latency or quality with continuous focus. Quality ensures sharp focus but may delay capture.\n%s</string>
     <string name="preference_photo_optimise_focus_latency" translatable="false">Latency</string>
     <string name="preference_photo_optimise_focus_quality" translatable="false">Quality</string>
 	
 	<string name="preference_auto_hdr" translatable="false">Auto HDR</string>
-    <string name="preference_auto_hdr_summary" translatable="false">When enabled in Standard photo mode, if the metered ISO is less than or equal to 1100 the app automatically switches to the device\'s HDR camera extension for that shot (light scene, flash and manual focus become unavailable while it\'s active). Above that ISO, the camera stays in normal mode with flash available (Dark scene). Adds extra capture time on well-lit shots.</string>
+    <string name="preference_auto_hdr_summary" translatable="false">In Standard mode, switches to HDR automatically below ISO 800 (flash/manual focus unavailable while active). Above that, stays in normal mode with flash. Adds capture time in bright scenes.</string>
+
+	<string name="preference_auto_exposure_correction" translatable="false">Auto Exposure Correction</string>
+    <string name="preference_auto_exposure_correction_summary" translatable="false">Independent of Auto HDR/Scene Detection. Applies negative exposure compensation for uniformly overexposed scenes (e.g. beach, snow), unless you\'ve set your own. Estimate not yet validated on real devices.</string>
+
+	<string name="preference_auto_night_mode" translatable="false">Auto Night Mode</string>
+    <string name="preference_auto_night_mode_summary" translatable="false">Independent of Auto HDR, Auto Exposure Correction and Scene Detection. In Standard mode, switches to Night mode for low light (flash/manual focus unavailable, slower capture). Needs device support.</string>
 
 	<string name="preference_depth_blur" translatable="false">Depth Effect (Bokeh) </string>
-    <string name="preference_depth_blur_summary" translatable="false">When enabled will apply a neural network-based monocular depth estimation which takes a single photo that has already been captured and generates a depth map, without needing a dedicated depth sensor.</string>
+    <string name="preference_depth_blur_summary" translatable="false">Applies AI depth estimation to a captured photo to create a depth map, without needing a depth sensor.</string>
 
 	<string name="preference_depth_blur_strength" translatable="false">Depth Effect Strength</string>
-    <string name="preference_depth_blur_strength_summary" translatable="false">Controls how strong the background blur looks (applied when the photo is captured, not previewed live). "Natural" is the on-device tested default; the other levels are untested estimates.</string>
+    <string name="preference_depth_blur_strength_summary" translatable="false">Strength of the background blur, applied after capture. \"Natural\" is the tested default; other levels are untested.</string>
     <string name="preference_depth_blur_strength_subtle" translatable="false">Subtle</string>
     <string name="preference_depth_blur_strength_natural" translatable="false">Natural (default)</string>
     <string name="preference_depth_blur_strength_strong" translatable="false">Strong</string>
     <string name="preference_depth_blur_strength_very_strong" translatable="false">Very Strong</string>
 
+	<string name="preference_nr_strength" translatable="false">Noise Reduction Strength</string>
+    <string name="preference_nr_strength_summary" translatable="false">Manual strength for \"Noise reduction (OpenCV)\". Used only when AI Scene Detection is off.</string>
+    <string name="preference_nr_strength_lower_light" translatable="false">Lower Light (default)</string>
+    <string name="preference_nr_strength_light" translatable="false">Light</string>
+    <string name="preference_nr_strength_medium" translatable="false">Medium</string>
+    <string name="preference_nr_strength_strong" translatable="false">Strong</string>
+
 
 	<string name="preference_ai_scene_detection" translatable="false">Scene Detection</string>
-    <string name="preference_ai_scene_detection_summary" translatable="false">When enabled in Standard photo mode, the AI ​​component will evaluate the shot and calibrate the image as necessary.</string>
+    <string name="preference_ai_scene_detection_summary" translatable="false">In Standard mode, AI evaluates the shot and calibrates the image automatically.</string>
+    <string name="preference_best_shot">Best Shot</string>
+    <string name="preference_best_shot_summary" translatable="false">Takes 3 frames per shutter press and keeps the sharpest. Useful for moving subjects or low light. Adds slight capture time. Not yet validated on real hardware.</string>
 
     <string name="preference_save_preshots" translatable="false">Save preview shots</string>
-    <string name="preference_save_preshots_summary" translatable="false">When enabled, a short video will be saved alongside each photo, containing shots from the moment before the photo was taken. Not supported for expo, focus bracketing or panorama modes.\n%s</string>
+    <string name="preference_save_preshots_summary" translatable="false">Saves a short video of the moments before each photo. Not supported in expo, focus bracketing or panorama modes.\n%s</string>
 
     <string name="telephoto" translatable="false">Telephoto</string>
     <string name="auto_lens" translatable="false">Auto Lens</string>
@@ -1091,21 +1179,21 @@
     <string name="focus_bracketing_auto_source_distance" translatable="false">Auto source</string>
 
     <string name="preference_allow_haptic_feedback" translatable="false">Allow vibration feedback</string>
-    <string name="preference_allow_haptic_feedback_summary" translatable="false">Whether to allow haptic vibration feedback, for example when adjusting some controls. Note this also requires touch interactions to be enabled in your device\'s settings.</string>
+    <string name="preference_allow_haptic_feedback_summary" translatable="false">Allows haptic feedback when adjusting some controls. Also requires touch feedback enabled in device settings.</string>
 
     <string name="cycle_lock_orientation" translatable="false">Cycle lock orientation</string>
     <string name="preference_show_cycle_lock_orientation" translatable="false">Show lock orientation icon</string>
-    <string name="preference_show_cycle_lock_orientation_summary" translatable="false">Whether to show an on-screen icon for cycling through locking the photo/video orientation to portrait or landscape.</string>
+    <string name="preference_show_cycle_lock_orientation_summary" translatable="false">Shows an on-screen icon to cycle locking photo/video orientation to portrait or landscape.</string>
 
     <string name="preference_show_preview_shots" translatable="false">Show preview shots icon</string>
-    <string name="preference_show_preview_shots_summary" translatable="false">Whether to show an on-screen icon for enabling or disabling preview shots</string>
+    <string name="preference_show_preview_shots_summary" translatable="false">Shows an on-screen icon to toggle preview shots.</string>
     <string name="preview_shots_enable" translatable="false">Enable preview shots</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="preview_shots_disable" translatable="false">Disable preview shots</string> <!-- for "ContentDescription" (used for accessibility, e.g., Google Talkback) -->
     <string name="preview_shots_enabled" translatable="false">Preview shots enabled</string>
     <string name="preview_shots_disabled" translatable="false">Preview shots disabled</string>
 
     <string name="preference_gallery" translatable="false">Gallery</string>
-    <string name="preference_gallery_summary" translatable="false">The thumbnail icon opens a gallery app installed on your device. If your preferred gallery app does not show as an option, try changing this option.\n%s</string>
+    <string name="preference_gallery_summary" translatable="false">The thumbnail opens a gallery app. Change this if your preferred app isn\'t offered.\n%s</string>
     <string name="preference_gallery_include_legacy" translatable="false">Default</string>
     <string name="preference_gallery_exclude_legacy" translatable="false">Exclude legacy</string>
     <string name="preference_gallery_all_editors" translatable="false">Include editors</string>
@@ -1117,9 +1205,9 @@
     <!-- The following strings should not be translated (and shouldn't be included in language-specific strings.xml), in case they need updating -->
 
     <string name="preference_privacy_policy" translatable="false">Privacy policy</string>
-    <string name="preference_privacy_policy_summary" translatable="false">Tap to display privacy policy</string>
+    <string name="preference_privacy_policy_summary" translatable="false">Tap to view the privacy policy.</string>
     <string name="preference_privacy_policy_online" translatable="false">Online privacy policy</string>
-    <string name="preference_privacy_policy_text" translatable="false"> <!-- if changing this, remember to consider if the online privacy policy needs updating -->
+    <string name="preference_privacy_policy_text" translatable="false" formatted="false"> <!-- if changing this, remember to consider if the online privacy policy needs updating -->
         <!-- now interpreted as HTML so that we can have the mailto link, for the contact that's needed for Google Play policies! -->
         <!-- be careful of rewording/removing bits, as some things here may be required for Google Play policies -->
         Open Camera is developed by Mark Harman.

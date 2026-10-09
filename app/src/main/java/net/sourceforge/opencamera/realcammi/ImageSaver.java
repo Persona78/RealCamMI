@@ -1,7 +1,6 @@
 package net.sourceforge.opencamera.realcammi;
 
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
-import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController2;
 import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
 
 import java.io.ByteArrayOutputStream;
@@ -1303,6 +1302,11 @@ public class ImageSaver extends Thread {
                 return false;
             }
             else {
+                // [REALCAMMI FORK] Fixed 2026-08-13: this used to re-throw without stopping the
+                // "HDR..." processing toast (started by the caller before calling processHDR()),
+                // leaving it stuck on screen forever whenever this branch was hit - same class of
+                // bug as the AVERAGE/"NR" toast fixed above.
+                main_activity.getPreview().stopProcessingTimerToast();
                 // throw RuntimeException, as we shouldn't ever get the error INVALID_N_IMAGES, if we do it's a programming error
                 throw new RuntimeException();
             }
@@ -1501,6 +1505,14 @@ public class ImageSaver extends Thread {
                 }
                 catch(HDRProcessorException e) {
                     MyDebug.logStackTrace(TAG, "HDRProcessorException", e);
+                    // [REALCAMMI FORK] Fixed 2026-08-13: this used to re-throw without stopping
+                    // the "NR..." processing toast (started at the top of this AVERAGE branch),
+                    // leaving it stuck on screen forever whenever the merge failed - e.g. an
+                    // out-of-memory HDRProcessorException, which is more likely to happen now
+                    // that N_IMAGES_NR_DARK_LOW_LIGHT was raised from 3 to 15 (this loop loads/
+                    // holds many more full-size bitmaps in memory than stock Open Camera's
+                    // original default).
+                    main_activity.getPreview().stopProcessingTimerToast();
                     throw new RuntimeException();
                 }
             }
@@ -1735,6 +1747,9 @@ public class ImageSaver extends Thread {
                     return false;
                 }
                 else {
+                    // [REALCAMMI FORK] Fixed 2026-08-13: same stuck-toast bug as the NR and HDR
+                    // branches above - re-threw without stopping the "Panorama..." toast first.
+                    main_activity.getPreview().stopProcessingTimerToast();
                     // throw RuntimeException, as we shouldn't ever get the error INVALID_N_IMAGES, if we do it's a programming error
                     throw new RuntimeException();
                 }
@@ -1949,20 +1964,6 @@ public class ImageSaver extends Thread {
         ContentValues contentValues = null; // used if using scoped storage
         try {
             if( !raw_only ) {
-                // [REALCAMMI FORK PERFORMANCE 2026-07-29, Item B] If the software zoom-crop
-                // workaround in CameraController2.onImageAvailable() already decoded and cropped
-                // this exact JPEG (cached keyed by the exact "data" array reference - see
-                // CameraController2.LastCroppedBitmapCache), reuse that bitmap here instead of
-                // letting postProcessBitmap() decode "data" from scratch a second time. Only
-                // used if bitmap is null (i.e. nothing upstream already supplied a decoded
-                // bitmap) and the reference matches exactly; any mismatch (e.g. burst mode, or
-                // any path that doesn't go through that exact crop block) falls back to the
-                // normal decode-from-data behaviour, unchanged.
-                if( bitmap == null ) {
-                    bitmap = CameraController2.LastCroppedBitmapCache.takeIfMatches(data);
-                    if( MyDebug.LOG && bitmap != null )
-                        Log.d(TAG, "reusing cached cropped bitmap instead of re-decoding JPEG");
-                }
                 PostProcessing.PostProcessBitmapResult postProcessBitmapResult = postProcessing.postProcessBitmap(request, data, bitmap, ignore_exif_orientation);
                 bitmap = postProcessBitmapResult.bitmap;
             }

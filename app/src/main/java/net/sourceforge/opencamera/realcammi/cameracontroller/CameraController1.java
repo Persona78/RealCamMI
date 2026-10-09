@@ -1510,6 +1510,26 @@ public class CameraController1 extends CameraController {
         return false;
     }
 
+    // [REALCAMMI FORK 2026-08-31] Huawei Pro-mode-inspired metering mode selector - stored but not
+    // applied on this legacy Camera1 path (not the active API on garnet, which uses Camera2 - see
+    // CameraController2 for the actual implementation). Kept as a simple no-op rather than left
+    // unimplemented, so calling code doesn't need to special-case the API version. Deliberately
+    // NOT persisted here (unlike CameraController2): this class has no Context reference at all
+    // (not as a field, not in the constructor), so reading/writing SharedPreferences would require
+    // threading a Context through the constructor and every call site, for a path not used on the
+    // hardware this project targets.
+    private CameraController.MeteringMode metering_mode = CameraController.MeteringMode.METERING_MODE_MATRIX;
+
+    @Override
+    public void setMeteringMode(CameraController.MeteringMode metering_mode) {
+        this.metering_mode = metering_mode;
+    }
+
+    @Override
+    public CameraController.MeteringMode getMeteringMode() {
+        return this.metering_mode;
+    }
+
     @Override
     public boolean supportsMetering() {
         try {

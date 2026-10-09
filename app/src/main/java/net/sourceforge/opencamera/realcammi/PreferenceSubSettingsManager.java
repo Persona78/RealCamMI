@@ -13,8 +13,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.EditText;
 
-import net.sourceforge.opencamera.realcammi.ui.FolderChooserDialog;
-
 import java.io.IOException;
 import java.util.Date;
 
@@ -195,22 +193,17 @@ public class PreferenceSubSettingsManager extends PreferenceSubScreen {
                 if( MyDebug.LOG )
                     Log.d(TAG, "user confirmed to restore settings");
                 MainActivity main_activity = (MainActivity)PreferenceSubSettingsManager.this.getActivity();
-				/*if( main_activity.getStorageUtils().isUsingSAF() ) {
-					main_activity.openLoadSettingsChooserDialogSAF(true);
-				}
-				else*/ {
-                    FolderChooserDialog fragment = new PreferenceSubSettingsManager.LoadSettingsFileChooserDialog();
-                    fragment.setShowDCIMShortcut(false);
-                    fragment.setShowNewFolderButton(false);
-                    fragment.setModeFolder(false);
-                    fragment.setExtension(".xml");
-                    fragment.setStartFolder(main_activity.getStorageUtils().getSettingsFolder());
-                    if( MainActivity.useScopedStorage() ) {
-                        // since we use File API to load, don't allow going outside of the application's folder, as we won't be able to read those files!
-                        fragment.setMaxParent(main_activity.getExternalFilesDir(null));
-                    }
-                    fragment.show(getParentFragmentManager(), "FOLDER_FRAGMENT");
-                }
+                // [REALCAMMI FIX 2026-09-20] Was a FolderChooserDialog restricted to
+                // StorageUtils.getSettingsFolder() (an app-private folder - see saveSettings()'s
+                // own history in SettingsManager.java for why that folder is being moved away
+                // from). Since saveSettings() now writes to the public Download/RealCamMI folder
+                // instead, restoring needs to be able to browse there too - openLoadSettingsChooserDialogSAF()
+                // already existed (a plain ACTION_OPEN_DOCUMENT picker, so the user can navigate
+                // anywhere readable, including Download/RealCamMI) but was only ever reachable
+                // behind a commented-out isUsingSAF() check tied to the unrelated photo-save
+                // location setting. Now used unconditionally, since restoring a settings backup
+                // has nothing to do with where photos are saved.
+                main_activity.openLoadSettingsChooserDialogSAF(true);
             }
         });
         alertDialog.setNegativeButton(android.R.string.no, null);
@@ -228,23 +221,7 @@ public class PreferenceSubSettingsManager extends PreferenceSubScreen {
         dialogs.add(alert);
     }
 
-    public static class LoadSettingsFileChooserDialog extends FolderChooserDialog {
-        @Override
-        public void onDismiss(DialogInterface dialog) {
-            if( MyDebug.LOG )
-                Log.d(TAG, "FolderChooserDialog dismissed");
-            // n.b., fragments have to be static (as they might be inserted into a new Activity - see http://stackoverflow.com/questions/15571010/fragment-inner-class-should-be-static),
-            // so we access the MainActivity via the fragment's getActivity().
-            MainActivity main_activity = (MainActivity)this.getActivity();
-            if( main_activity != null ) { // main_activity may be null if this is being closed via MainActivity.onNewIntent()
-                String settings_file = this.getChosenFile();
-                if( MyDebug.LOG )
-                    Log.d(TAG, "settings_file: " + settings_file);
-                if( settings_file != null ) {
-                    main_activity.getSettingsManager().loadSettings(settings_file);
-                }
-            }
-            super.onDismiss(dialog);
-        }
-    }
+    // [REALCAMMI FIX 2026-09-20] Removed LoadSettingsFileChooserDialog (a FolderChooserDialog
+    // subclass) - genuinely dead code now that loadSettings() above uses
+    // openLoadSettingsChooserDialogSAF() unconditionally instead. It was the only caller.
 }

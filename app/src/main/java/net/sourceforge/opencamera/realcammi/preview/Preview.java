@@ -63,7 +63,6 @@ import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.SensorEvent;
 import android.hardware.SensorManager;
-import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraExtensionCharacteristics;
 //import android.hardware.camera2.CameraMetadata;
 //import android.hardware.camera2.CaptureRequest;
@@ -135,6 +134,35 @@ import android.widget.Toast;
  */
 public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextureListener {
     private static final String TAG = "Preview";
+    // [REALCAMMI FORK] Auto Exposure Correction: compensation index applied on OVEREXPOSED
+    // scenes (device-specific step units, same units as CONTROL_AE_EXPOSURE_COMPENSATION/
+    // getExposureCompensationPref()). Initial estimate only, not yet validated on-device.
+    private static final int AUTO_EXPOSURE_CORRECTION_EV = -2;
+    // [REALCAMMI FORK] Delay between the camera finishing reopening for an Auto Night Mode
+    // trigger (extension or software fallback) and actually firing the capture, giving AE/AF/AWB
+    // time to settle on the freshly reopened session's metering before the shot (or first frame
+    // of the burst) is taken. Only applied to Auto Night Mode, not Auto HDR - HDR only triggers
+    // in well-lit scenes (EXTREME_BACKLIT), where metering settles fast enough that this delay
+    // would serve no purpose. User-requested minimum of 5 seconds after testing showed the
+    // near-instant retry (previously <1s after reopen) risked using unsettled metering in low
+    // light specifically.
+    private static final long AUTO_TRIGGER_SETTLE_DELAY_MS = 5000;
+    // [REALCAMMI FORK] Auto HDR retry: how often to re-check whether fresh metering
+    // (capture_result_has_iso/has_exposure_time) has arrived after reopening the camera, and the
+    // absolute ceiling on how long to wait before giving up and firing anyway. 2 seconds is a
+    // safety net only - in practice the first preview frame after reopening arrives in well under
+    // that, this just guarantees the shot is never blocked indefinitely if metering somehow never
+    // becomes available.
+    private static final long AUTO_HDR_METERING_POLL_INTERVAL_MS = 100;
+    private static final long AUTO_HDR_METERING_MAX_WAIT_MS = 2000;
+    // [REALCAMMI FORK] Minimum-light gate for Auto HDR: bracketing blends 3 exposures (one
+    // deliberately darker), and at high ISO that darker frame is dominated by sensor noise, which
+    // the merge then amplifies rather than hides. Traditional (non-computational) HDR bracketing
+    // guides put the practical ceiling around ISO 400-800 before this trade-off stops being worth
+    // it; smartphone-specific sources note image quality getting bad above ~1000. 800 is the
+    // conservative choice between the two. Above this, Auto HDR simply doesn't trigger, since a
+    // single exposure is likely to look better than a noisy 3-shot blend.
+    private static final int MIN_LIGHT_FOR_HDR_MAX_ISO = 800;
 
     private final boolean using_android_l;
     private final ApplicationInterface applicationInterface;
@@ -266,6 +294,25 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     private long last_take_photo_time = -1L; // last time we called takePhoto()
     private boolean pending_auto_hdr_capture = false; // [REALCAMMI FORK] true if we reopened the camera specifically to retry a photo in Auto HDR extension mode
     private boolean want_auto_hdr_extension_now = false; // [REALCAMMI FORK] true while the pending/in-progress Auto HDR capture wants the extension session forced on
+    // [REALCAMMI FORK] Auto Night Mode: mirrors the two fields above exactly, but for the
+    // vendor Night camera extension (EXTENSION_NIGHT / PhotoMode.X_Night), triggered on
+    // LOW_LIGHT instead of EXTREME_BACKLIT - see the trigger block near takePicture() and the
+    // extension resolution block in openCameraCore()/setupCameraParameters() prep.
+    private boolean pending_auto_night_capture = false;
+    private boolean want_auto_night_extension_now = false;
+    // [REALCAMMI FORK] Auto HDR software fallback: used instead of want_auto_hdr_extension_now
+    // when the vendor HDR extension isn't supported (e.g. confirmed unavailable on the Xiaomi
+    // garnet). Temporarily switches PhotoMode to HDR (software exposure bracketing, standard
+    // Camera2 API, no vendor dependency) for one shot, then switches back - same reopen-based
+    // pattern as the extension flags above, see setPhotoModeForAutoHDRFallback() in
+    // MyApplicationInterface.java.
+    private boolean pending_auto_hdr_software_capture = false;
+    private boolean want_auto_hdr_software_now = false;
+    // [REALCAMMI FORK] Auto Night Mode software fallback: mirrors the Auto HDR software fallback
+    // fields above exactly, but for PhotoMode.NoiseReduction (burst) instead of PhotoMode.HDR -
+    // see setPhotoModeForAutoNightFallback() in MyApplicationInterface.java.
+    private boolean pending_auto_night_software_capture = false;
+    private boolean want_auto_night_software_now = false;
     private Handler processing_timer_handler; // [REALCAMMI FORK] drives the repeating "still processing" toast
     private Runnable processing_timer_runnable;
     private long processing_timer_start_time;
@@ -2020,11 +2067,84 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                     if( using_android_l ) {
                         configureTransform();
                     }
+                    // [REALCAMMI FORK] Fixed 2026-08-13: the two Auto HDR retries below used to
+                    // call takePhoto() immediately after reopening. Confirmed via a real device
+                    // log ("Base exposure time: 33333333" - the hardcoded 1/30s fallback, not a
+                    // real reading) that capture_result_has_iso/has_exposure_time are still false
+                    // at that instant - resetCaptureResultInfo() clears them on every camera
+                    // (re)open, and no preview frame had been processed yet to repopulate them.
+                    // The bracket's exposure calculation then fell back to a hardcoded 1/30s
+                    // base combined with a stale ISO, blowing out every shot regardless of scene.
+                    // Manual HDR mode never hits this because the live preview runs for a while
+                    // (however briefly) before the user taps the shutter, giving metering time to
+                    // populate. waitForFreshMeteringThenTakePhoto() replaces the immediate call,
+                    // polling for real metering instead of guessing a fixed delay - unlike Auto
+                    // Night Mode's fixed AUTO_TRIGGER_SETTLE_DELAY_MS (needed there for AE/AF to
+                    // settle in low light, not just for metering to exist at all).
                     if( pending_auto_hdr_capture ) {
                         pending_auto_hdr_capture = false;
                         if( MyDebug.LOG )
-                            Log.d(TAG, "Auto HDR: reopened in HDR extension mode, retrying photo");
-                        takePhoto(false, false);
+                            Log.d(TAG, "Auto HDR: reopened in HDR extension mode, waiting for fresh metering before retrying photo");
+                        waitForFreshMeteringThenTakePhoto(System.currentTimeMillis());
+                    }
+                    // [REALCAMMI FORK] Auto HDR software fallback: mirrors the extension retry
+                    // above, for when we reopened with PhotoMode switched to HDR instead.
+                    if( pending_auto_hdr_software_capture ) {
+                        pending_auto_hdr_software_capture = false;
+                        if( MyDebug.LOG )
+                            Log.d(TAG, "Auto HDR: reopened in software HDR bracketing mode, waiting for fresh metering before retrying photo");
+                        waitForFreshMeteringThenTakePhoto(System.currentTimeMillis());
+                    }
+                    // [REALCAMMI FORK] Auto Night Mode: waits AUTO_TRIGGER_SETTLE_DELAY_MS before
+                    // firing, unlike the HDR retries above - reopening the camera resets AE/AF/AWB
+                    // metering, and in low light this genuinely needs more time to settle before
+                    // the shot (or first frame of the burst) is taken, rather than using
+                    // stale/unsettled metering from the split second right after reopening.
+                    if( pending_auto_night_capture ) {
+                        pending_auto_night_capture = false;
+                        if( MyDebug.LOG )
+                            Log.d(TAG, "Auto Night Mode: reopened in Night extension mode, waiting " + AUTO_TRIGGER_SETTLE_DELAY_MS + "ms for AE/AF to settle before retrying photo");
+                        // [REALCAMMI FORK] Mirrors the steady-hold prompt shown by Xiaomi's own
+                        // native camera app during its Night Mode countdown. stopProcessingTimerToast()
+                        // pauses the ticking "Auto Night Mode... Xs" toast (started back at the
+                        // original trigger, before reopening) - it was re-posting every second and
+                        // immediately overwriting this message, making it flash by unnoticed.
+                        // dont_clear=true keeps this toast on screen for the full wait, instead of
+                        // it timing out after the usual couple of seconds. clearActiveFakeToast()
+                        // + resuming the ticker right as the capture actually fires (below) hands
+                        // the screen back to the normal elapsed-time feedback for the burst itself.
+                        stopProcessingTimerToast();
+                        showToast(null, "Low light detected. Please hold your device steady...", 0, true, true);
+                        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                clearActiveFakeToast();
+                                startProcessingTimerToast("Auto Night Mode");
+                                takePhoto(false, false);
+                            }
+                        }, AUTO_TRIGGER_SETTLE_DELAY_MS);
+                    }
+                    // [REALCAMMI FORK] Auto Night Mode software fallback: mirrors the Auto Night
+                    // Mode extension retry above, for when we reopened with PhotoMode switched to
+                    // NoiseReduction instead.
+                    if( pending_auto_night_software_capture ) {
+                        pending_auto_night_software_capture = false;
+                        if( MyDebug.LOG )
+                            Log.d(TAG, "Auto Night Mode: reopened in software burst NR mode, waiting " + AUTO_TRIGGER_SETTLE_DELAY_MS + "ms for AE/AF to settle before retrying photo");
+                        // [REALCAMMI FORK] Mirrors the steady-hold prompt shown by Xiaomi's own
+                        // native camera app during its Night Mode countdown - see the extension
+                        // retry above for why stopProcessingTimerToast()/dont_clear=true/
+                        // clearActiveFakeToast() are needed here.
+                        stopProcessingTimerToast();
+                        showToast(null, "Low light detected. Please hold your device steady...", 0, true, true);
+                        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                clearActiveFakeToast();
+                                startProcessingTimerToast("Auto Night Mode");
+                                takePhoto(false, false);
+                            }
+                        }, AUTO_TRIGGER_SETTLE_DELAY_MS);
                     }
                 }
             });
@@ -2165,11 +2285,20 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
         // seems sensible to set extension mode (or not) first
         boolean use_extension_for_auto_hdr = want_auto_hdr_extension_now && this.supported_extensions != null
                 && this.supported_extensions.contains(CameraExtensionCharacteristics.EXTENSION_HDR);
+        // [REALCAMMI FORK] Auto Night Mode: same resolution pattern as Auto HDR above, checked
+        // second so a simultaneous (should never happen - mutually exclusive scene categories)
+        // HDR trigger always wins if both were somehow pending.
+        boolean use_extension_for_auto_night = want_auto_night_extension_now && this.supported_extensions != null
+                && this.supported_extensions.contains(CameraExtensionCharacteristics.EXTENSION_NIGHT);
         if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && this.supported_extensions != null
-                && ( applicationInterface.isCameraExtensionPref() || use_extension_for_auto_hdr ) ) {
-            int extension = ( use_extension_for_auto_hdr && !applicationInterface.isCameraExtensionPref() )
-                    ? CameraExtensionCharacteristics.EXTENSION_HDR
-                    : applicationInterface.getCameraExtensionPref();
+                && ( applicationInterface.isCameraExtensionPref() || use_extension_for_auto_hdr || use_extension_for_auto_night ) ) {
+            int extension;
+            if( use_extension_for_auto_hdr && !applicationInterface.isCameraExtensionPref() )
+                extension = CameraExtensionCharacteristics.EXTENSION_HDR;
+            else if( use_extension_for_auto_night && !applicationInterface.isCameraExtensionPref() )
+                extension = CameraExtensionCharacteristics.EXTENSION_NIGHT;
+            else
+                extension = applicationInterface.getCameraExtensionPref();
             if( this.supported_extensions.contains(extension) ) {
                 camera_controller.setCameraExtension(true, extension);
 
@@ -2208,21 +2337,38 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
             camera_controller.setCameraExtension(false, 0);
         }
 
-        // [REALCAMMI FORK] Piece 3/4: feed the AI scene-detection analysis reader when EITHER
-        // Auto HDR (EXTREME_BACKLIT) or the general AI scene detection preference (LOW_LIGHT/
-        // INDOOR, applied in PostProcessing) is enabled. Mirrors the extension-mode sync above.
+        // [REALCAMMI FORK] Piece 3/4: feed the AI scene-detection analysis reader when ANY of:
+        // Auto HDR (EXTREME_BACKLIT), Auto Exposure Correction (OVEREXPOSED), Auto Night Mode
+        // (LOW_LIGHT), or the general AI scene detection preference (drives NR strength/sharpen
+        // amount in PostProcessing).
         camera_controller.setAnalysisEnabled( applicationInterface instanceof MyApplicationInterface
                 && ( ((MyApplicationInterface) applicationInterface).getAutoHDRPref()
+                || ((MyApplicationInterface) applicationInterface).getAutoExposureCorrectionPref()
+                || ((MyApplicationInterface) applicationInterface).getAutoNightModePref()
                 || ((MyApplicationInterface) applicationInterface).getAISceneDetectionPref() ) );
-        // [REALCAMMI FORK] Debug-only visibility into which scene category the AI landed on,
-        // whenever it changes - gated behind MyDebug.LOG so it never shows in release builds.
-        if( MyDebug.LOG ) {
-            camera_controller.setSceneCategoryCallback(category ->
-                    showToast(null, "AI scene: " + category, true, false));
-        }
-        else {
-            camera_controller.setSceneCategoryCallback(null);
-        }
+        // [REALCAMMI FORK] Scene category callback: always active now (not just MyDebug.LOG),
+        // since Auto Exposure Correction needs to react live to OVEREXPOSED changes. Debug toast
+        // still gated behind MyDebug.LOG as before.
+        camera_controller.setSceneCategoryCallback(category -> {
+            if( MyDebug.LOG )
+                showToast(null, "AI scene: " + category, true, false);
+            if( applicationInterface instanceof MyApplicationInterface ) {
+                MyApplicationInterface my_app_interface = (MyApplicationInterface) applicationInterface;
+                // [REALCAMMI FORK] Auto Exposure Correction: bias exposure down when the AI
+                // detects a uniformly OVEREXPOSED scene, restore the user's own exposure
+                // compensation preference (usually 0) as soon as the scene stops being
+                // overexposed. Only engages if the user hasn't already dialled in their own
+                // manual EV, so it never fights a deliberate user choice. AUTO_EXPOSURE_
+                // CORRECTION_EV is an initial estimate, not yet validated on-device - tune if
+                // real test shots need a stronger or weaker correction.
+                if( my_app_interface.getAutoExposureCorrectionPref()
+                        && my_app_interface.getExposureCompensationPref() == 0 ) {
+                    int target = ( category == SceneDetector.SceneCategory.OVEREXPOSED )
+                            ? Math.max(AUTO_EXPOSURE_CORRECTION_EV, min_exposure) : 0;
+                    camera_controller.setExposureCompensation(target);
+                }
+            }
+        });
 
         setupCameraParameters();
 
@@ -5602,6 +5748,42 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
         }
     }
 
+    /** [REALCAMMI FORK 2026-08-31] Huawei Pro-mode-inspired metering mode selector. Cycles
+     *  Matrix -> Center-weighted -> Spot -> Matrix.
+     */
+    public void toggleMeteringMode() {
+        if( MyDebug.LOG )
+            Log.d(TAG, "toggleMeteringMode()");
+        if( this.phase == PHASE_TAKING_PHOTO ) {
+            // just to be safe
+            if( MyDebug.LOG )
+                Log.d(TAG, "currently taking a photo");
+            return;
+        }
+        if( camera_controller == null ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "camera not opened!");
+            return;
+        }
+        if( !camera_controller.supportsMetering() )
+            return;
+        CameraController.MeteringMode current = camera_controller.getMeteringMode();
+        CameraController.MeteringMode next;
+        if( current == CameraController.MeteringMode.METERING_MODE_MATRIX )
+            next = CameraController.MeteringMode.METERING_MODE_CENTER_WEIGHTED;
+        else if( current == CameraController.MeteringMode.METERING_MODE_CENTER_WEIGHTED )
+            next = CameraController.MeteringMode.METERING_MODE_SPOT;
+        else
+            next = CameraController.MeteringMode.METERING_MODE_MATRIX;
+        camera_controller.setMeteringMode(next);
+    }
+
+    public CameraController.MeteringMode getMeteringMode() {
+        if( camera_controller == null )
+            return CameraController.MeteringMode.METERING_MODE_MATRIX;
+        return camera_controller.getMeteringMode();
+    }
+
     /** User has clicked the "take picture" button (or equivalent GUI operation).
      * @param photo_snapshot If true, then the user has requested taking a photo whilst video
      *                       recording. If false, either take a photo or start/stop video depending
@@ -6724,12 +6906,69 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
                 if( MyDebug.LOG )
                     Log.d(TAG, "onCompleted");
                 applicationInterface.onPictureCompleted();
+                // [REALCAMMI FORK] Fixed 2026-08-11: onCompleted() runs off the main UI thread
+                // (ImageSaver/CameraBackground), so all 4 reopenCamera() calls below are wrapped
+                // in runOnUiThread() - closeCamera() inside reopenCamera() touches views via
+                // MainUI.destroyPopup(), which crashes with CalledFromWrongThreadException
+                // otherwise. Confirmed via a real device logcat on the software fallback path.
                 if( want_auto_hdr_extension_now ) {
                     want_auto_hdr_extension_now = false;
                     if( MyDebug.LOG )
                         Log.d(TAG, "Auto HDR: capture done, reopening back to normal session");
                     stopProcessingTimerToast();
-                    reopenCamera();
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            reopenCamera();
+                        }
+                    });
+                }
+                // [REALCAMMI FORK] Auto Night Mode: mirrors the Auto HDR cleanup above exactly.
+                if( want_auto_night_extension_now ) {
+                    want_auto_night_extension_now = false;
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "Auto Night Mode: capture done, reopening back to normal session");
+                    stopProcessingTimerToast();
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            reopenCamera();
+                        }
+                    });
+                }
+                // [REALCAMMI FORK] Auto HDR software fallback: restores PhotoMode to Standard
+                // (writing the preference directly - see setPhotoModeForAutoHDRFallback()) and
+                // reopens, mirroring the extension cleanup above.
+                if( want_auto_hdr_software_now ) {
+                    want_auto_hdr_software_now = false;
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "Auto HDR: software bracketing capture done, restoring Standard mode");
+                    if( applicationInterface instanceof MyApplicationInterface )
+                        ((MyApplicationInterface) applicationInterface).setPhotoModeForAutoHDRFallback(false);
+                    stopProcessingTimerToast();
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            reopenCamera();
+                        }
+                    });
+                }
+                // [REALCAMMI FORK] Auto Night Mode software fallback: mirrors the Auto HDR
+                // software fallback cleanup above exactly, restoring PhotoMode to Standard via
+                // setPhotoModeForAutoNightFallback().
+                if( want_auto_night_software_now ) {
+                    want_auto_night_software_now = false;
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "Auto Night Mode: software burst NR capture done, restoring Standard mode");
+                    if( applicationInterface instanceof MyApplicationInterface )
+                        ((MyApplicationInterface) applicationInterface).setPhotoModeForAutoNightFallback(false);
+                    stopProcessingTimerToast();
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            reopenCamera();
+                        }
+                    });
                 }
                 if( !using_android_l ) {
                     //is_preview_started = false; // preview automatically stopped due to taking photo on original Camera API
@@ -6893,18 +7132,156 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
             }
         };
 
+        // [REALCAMMI FORK] Diagnostic log: prints the exact state of every condition the Auto
+        // HDR / Auto Night Mode triggers below depend on. Added 2026-08-10 after Auto Night
+        // Mode silently failed to trigger on a confirmed LOW_LIGHT scene - this pinpoints which
+        // specific condition is false, instead of guessing from vendor HAL logs alone.
+        if( MyDebug.LOG && applicationInterface instanceof MyApplicationInterface ) {
+            MyApplicationInterface debug_app_interface = (MyApplicationInterface) applicationInterface;
+            Log.d(TAG, "Auto extension trigger check: scene=" + camera_controller.getCurrentSceneCategory()
+                    + " photo_mode=" + debug_app_interface.getPhotoMode()
+                    + " is_camera_extension=" + camera_controller.isCameraExtension()
+                    + " is_manual_iso=" + camera_controller.isManualISO()
+                    + " has_iso=" + camera_controller.captureResultHasIso()
+                    + " has_exposure_time=" + camera_controller.captureResultHasExposureTime()
+                    + " auto_hdr_pref=" + debug_app_interface.getAutoHDRPref()
+                    + " auto_night_pref=" + debug_app_interface.getAutoNightModePref()
+                    + " supports_ext_hdr=" + supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_HDR)
+                    + " supports_ext_night=" + supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_NIGHT));
+        }
+
+        // [REALCAMMI FORK] Changed 2026-08-12: no longer gated on EXTREME_BACKLIT. Auto HDR now
+        // fires on every Standard-mode shot whenever the "Auto HDR" toggle is on, regardless of
+        // scene content - the user found scene-gating too restrictive (many real backlit/mixed
+        // scenes weren't being caught by the EXTREME_BACKLIT histogram thresholds). Trade-off:
+        // every shot now takes the extra HDR capture time while the toggle is on, since there's
+        // no longer a smart "only when it actually helps" check. Still gated on
+        // MIN_LIGHT_FOR_HDR_MAX_ISO though - HDR needs enough light to be worth the noise
+        // trade-off of blending a deliberately underexposed frame.
+        // [REALCAMMI FIX 2026-09-18] Added "&& !isVideo()" - this method (takePhotoWhenFocused())
+        // is also reachable while recording video (photo-snapshot-while-recording, and possibly
+        // the autofocus pass when starting a recording), and this trigger's other conditions
+        // (getPhotoMode()==Standard, AutoHDRPref, ISO threshold) say nothing about video vs photo
+        // - most users leave the underlying photo mode preference on "Standard" and just toggle
+        // the photo/video switch, so this fired during video too. reopenCamera() below then
+        // reopens into the HDR camera Extension session (CameraExtensionSession), which is a
+        // stills-only API with no video-recording support at all - this is the confirmed root
+        // cause of "video fails when Auto HDR is active" reported by the author.
         if( applicationInterface instanceof MyApplicationInterface
-                && ((MyApplicationInterface) applicationInterface).getAutoHDRPref() && !camera_controller.isCameraExtension()
+                && ((MyApplicationInterface) applicationInterface).getAutoHDRPref() && !camera_controller.isCameraExtension() && !camera_controller.isManualISO()
+                && !isVideo()
                 && ((MyApplicationInterface) applicationInterface).getPhotoMode() == MyApplicationInterface.PhotoMode.Standard
                 && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime()
-                && camera_controller.getCurrentSceneCategory() == SceneDetector.SceneCategory.EXTREME_BACKLIT
+                && camera_controller.captureResultIso() <= MIN_LIGHT_FOR_HDR_MAX_ISO
                 && supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_HDR) ) {
             if( MyDebug.LOG )
-                Log.d(TAG, "Auto HDR: AI detected extreme backlit scene, reopening in HDR extension mode before capture");
+                Log.d(TAG, "Auto HDR: reopening in HDR extension mode before capture");
             pending_auto_hdr_capture = true;
             want_auto_hdr_extension_now = true;
             startProcessingTimerToast("Auto HDR");
-            reopenCamera();
+            // [REALCAMMI FORK] Fixed 2026-08-11: takePhotoWhenFocused() runs on the
+            // CameraBackground thread (via the autofocus callback), not the main UI thread.
+            // reopenCamera() -> closeCamera() -> cameraClosed() -> MainUI.destroyPopup() touches
+            // views, which crashes with CalledFromWrongThreadException off the main thread.
+            // Must be posted via runOnUiThread(), same pattern used elsewhere in this file.
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    reopenCamera();
+                }
+            });
+            return; // retry happens automatically once the reopened preview signals ready
+        }
+
+        // [REALCAMMI FORK] Auto HDR software fallback: fires when Auto HDR is wanted but the
+        // vendor HDR extension isn't available (confirmed dead on the Xiaomi garnet - the
+        // ExtendHAL/CHIUSECASE vendor logs show it bypassed for this camera). Falls back to
+        // Open Camera's own software exposure-bracketing HDR (PhotoMode.HDR: 3 shots at
+        // different exposures, merged) - only needs standard Camera2 API, no vendor dependency.
+        // Same trigger shape as the extension block above, minus the extension-support check,
+        // plus the inverse: only fires when the extension check FAILED. No longer gated on
+        // EXTREME_BACKLIT either, but still gated on MIN_LIGHT_FOR_HDR_MAX_ISO - see the
+        // comment on the extension block above.
+        if( applicationInterface instanceof MyApplicationInterface
+                && ((MyApplicationInterface) applicationInterface).getAutoHDRPref() && !camera_controller.isCameraExtension() && !camera_controller.isManualISO()
+                && !isVideo()
+                && ((MyApplicationInterface) applicationInterface).getPhotoMode() == MyApplicationInterface.PhotoMode.Standard
+                && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime()
+                && camera_controller.captureResultIso() <= MIN_LIGHT_FOR_HDR_MAX_ISO
+                && !supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_HDR) ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "Auto HDR: no HDR extension support - falling back to software exposure bracketing");
+            pending_auto_hdr_software_capture = true;
+            want_auto_hdr_software_now = true;
+            ((MyApplicationInterface) applicationInterface).setPhotoModeForAutoHDRFallback(true);
+            startProcessingTimerToast("Auto HDR");
+            // [REALCAMMI FORK] Fixed 2026-08-11: same CalledFromWrongThreadException fix as the
+            // extension block above - see the comment there.
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    reopenCamera();
+                }
+            });
+            return; // retry happens automatically once the reopened preview signals ready
+        }
+
+        // [REALCAMMI FORK] Auto Night Mode: mirrors the Auto HDR trigger above exactly, but
+        // reopens into the vendor Night extension (EXTENSION_NIGHT) on LOW_LIGHT instead of
+        // HDR extension on EXTREME_BACKLIT. Independent preference/gate - see
+        // getAutoNightModePref() in MyApplicationInterface.java.
+        if( applicationInterface instanceof MyApplicationInterface
+                && ((MyApplicationInterface) applicationInterface).getAutoNightModePref() && !camera_controller.isCameraExtension() && !camera_controller.isManualISO()
+                && !isVideo()
+                && ((MyApplicationInterface) applicationInterface).getPhotoMode() == MyApplicationInterface.PhotoMode.Standard
+                && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime()
+                && camera_controller.getCurrentSceneCategory() == SceneDetector.SceneCategory.LOW_LIGHT
+                && supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_NIGHT) ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "Auto Night Mode: AI detected low-light scene, reopening in Night extension mode before capture");
+            pending_auto_night_capture = true;
+            want_auto_night_extension_now = true;
+            startProcessingTimerToast("Auto Night Mode");
+            // [REALCAMMI FORK] Fixed 2026-08-11: same CalledFromWrongThreadException fix as the
+            // Auto HDR extension block above - see the comment there.
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    reopenCamera();
+                }
+            });
+            return; // retry happens automatically once the reopened preview signals ready
+        }
+
+        // [REALCAMMI FORK] Auto Night Mode software fallback: mirrors the Auto HDR software
+        // fallback block exactly, but falls back to PhotoMode.NoiseReduction (burst capture,
+        // multiple frames aligned and averaged in software) instead of PhotoMode.HDR, and fires
+        // on LOW_LIGHT instead of EXTREME_BACKLIT. Fires when Auto Night Mode is wanted but the
+        // vendor Night extension isn't available (confirmed dead on the Xiaomi garnet -
+        // supports_ext_night logged false even with a confirmed LOW_LIGHT scene).
+        if( applicationInterface instanceof MyApplicationInterface
+                && ((MyApplicationInterface) applicationInterface).getAutoNightModePref() && !camera_controller.isCameraExtension() && !camera_controller.isManualISO()
+                && !isVideo()
+                && ((MyApplicationInterface) applicationInterface).getPhotoMode() == MyApplicationInterface.PhotoMode.Standard
+                && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime()
+                && camera_controller.getCurrentSceneCategory() == SceneDetector.SceneCategory.LOW_LIGHT
+                && !supportsCameraExtension(CameraExtensionCharacteristics.EXTENSION_NIGHT) ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "Auto Night Mode: AI detected low-light scene, no Night extension support - falling back to software burst NR");
+            pending_auto_night_software_capture = true;
+            want_auto_night_software_now = true;
+            ((MyApplicationInterface) applicationInterface).setPhotoModeForAutoNightFallback(true);
+            startProcessingTimerToast("Auto Night Mode");
+            // [REALCAMMI FORK] Fixed 2026-08-11: same CalledFromWrongThreadException fix as the
+            // Auto HDR extension block above - see the comment there. This is the exact block
+            // whose crash was confirmed via a real device logcat (CameraBackground thread,
+            // ViewRootImpl$CalledFromWrongThreadException, through MainUI.destroyPopup()).
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    reopenCamera();
+                }
+            });
             return; // retry happens automatically once the reopened preview signals ready
         }
 
@@ -7814,9 +8191,13 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     public boolean supportsCameraExtension(int extension) {
         if( extension == CameraExtensionCharacteristics.EXTENSION_HDR
                 && !( camera_controller instanceof CameraController2 )) {
-            // [REALCAMMI FORK] Only allow EXTENSION_HDR on devices we've specifically vetted
-            // (Xiaomi/Ulefone). Previously blocked unconditionally: had no effect on Galaxy S10e,
-            // not available on Pixel 6 Pro or Galaxy S24+, and never actually tested elsewhere.
+            // [REALCAMMI FORK] EXTENSION_HDR is only offered when the Camera2 API is in use.
+            // There is NO device allowlist here: on Camera2 it is offered on any device whose
+            // camera reports EXTENSION_HDR support (see supported_extensions below).
+            // [REALCAMMI COMMENT FIX 2026-10-08] This comment used to say the extension was limited
+            // to Xiaomi/Ulefone; the code never did that, so the comment was corrected to match the
+            // code. (Earlier history: it was blocked unconditionally, had no effect on Galaxy S10e,
+            // and was not available on Pixel 6 Pro or Galaxy S24+.)
             return false;
         }
         return this.supported_extensions != null && this.supported_extensions.contains(extension);
@@ -8245,6 +8626,35 @@ public class Preview implements SurfaceHolder.Callback, TextureView.SurfaceTextu
     // [REALCAMMI FORK] Generic elapsed-time toast for operations with no native progress
     // reporting (classic HDR/NR merge, Panorama stitch, Auto HDR camera reopen). Updates the
     // same toast once a second so the user knows the app hasn't frozen.
+    // [REALCAMMI FORK] Auto HDR retry helper: polls for fresh metering (capture_result_has_iso
+    // && capture_result_has_exposure_time) after the camera reopens for a trigger, firing
+    // takePhoto() as soon as both are true instead of on a fixed delay. Falls back to firing
+    // anyway once AUTO_HDR_METERING_MAX_WAIT_MS has elapsed, so a shot is never blocked
+    // indefinitely if metering somehow never arrives. See the Auto HDR retry blocks in
+    // openCamera()'s cameraOpened runnable for why this exists (a real device crash/blown-out
+    // photo was traced to firing before capture_result_has_exposure_time was ever populated).
+    private void waitForFreshMeteringThenTakePhoto(final long start_time_ms) {
+        boolean metering_ready = camera_controller != null
+                && camera_controller.captureResultHasIso() && camera_controller.captureResultHasExposureTime();
+        boolean timed_out = System.currentTimeMillis() - start_time_ms >= AUTO_HDR_METERING_MAX_WAIT_MS;
+        if( metering_ready || timed_out ) {
+            if( MyDebug.LOG ) {
+                Log.d(TAG, "waitForFreshMeteringThenTakePhoto: firing, metering_ready=" + metering_ready
+                        + " timed_out=" + timed_out
+                        + " waited_ms=" + (System.currentTimeMillis() - start_time_ms));
+            }
+            takePhoto(false, false);
+        }
+        else {
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    waitForFreshMeteringThenTakePhoto(start_time_ms);
+                }
+            }, AUTO_HDR_METERING_POLL_INTERVAL_MS);
+        }
+    }
+
     public void startProcessingTimerToast(final String label) {
         stopProcessingTimerToast();
         this.processing_timer_label = label;

@@ -1,0 +1,11 @@
+<vector android:height="48dp" android:tint="#ffffff"
+    android:viewportHeight="960" android:viewportWidth="960"
+    android:width="48dp" xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- [REALCAMMI FORK 2026-08-31] Metering mode icon: Center-weighted (layered circles, opacity increases toward center) -->
+    <path android:fillColor="#ffffff" android:fillAlpha="0.30" android:pathData="
+        M480,100 A380,380 0 1 0 480,860 A380,380 0 1 0 480,100 Z"/>
+    <path android:fillColor="#ffffff" android:fillAlpha="0.60" android:pathData="
+        M480,220 A260,260 0 1 0 480,740 A260,260 0 1 0 480,220 Z"/>
+    <path android:fillColor="#ffffff" android:fillAlpha="1.00" android:pathData="
+        M480,340 A140,140 0 1 0 480,620 A140,140 0 1 0 480,340 Z"/>
+</vector>

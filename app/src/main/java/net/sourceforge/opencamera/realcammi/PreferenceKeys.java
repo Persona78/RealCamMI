@@ -93,6 +93,42 @@ public class PreferenceKeys {
 
     public static final String ExposureTimePreferenceKey = "preference_exposure_time";
 
+    /** [REALCAMMI FORK 2026-08-31] User-configurable extra EV compensation applied to every still
+     *  capture, entered via a GCam-style numeric dialog (MyEditTextPreference) rather than a
+     *  slider. Default "0" means no extra compensation is applied.
+     */
+    public static final String ExtraExposureCompensationPreferenceKey = "preference_extra_exposure_compensation";
+    public static final String ExtraExposureCompensationDefault = "0";
+
+    /** [REALCAMMI FORK 2026-08-31] User-configurable "Color boost" fields (GCam-style numeric
+     *  dialogs, not sliders) for PostProcessing.applyColorBoostMat(). Defaults are a genuine
+     *  no-op (scale fields 0.000, meaning an effective multiplier of 1+value; offset 0; saturation
+     *  1.0; hue 0 degrees) until the user edits one.
+     */
+    public static final String ColorBoostRedScalePreferenceKey = "preference_color_boost_red_scale";
+    public static final String ColorBoostRedScaleDefault = "0.000";
+    public static final String ColorBoostGreenScalePreferenceKey = "preference_color_boost_green_scale";
+    public static final String ColorBoostGreenScaleDefault = "0.000";
+    public static final String ColorBoostBlueScalePreferenceKey = "preference_color_boost_blue_scale";
+    public static final String ColorBoostBlueScaleDefault = "0.000";
+    public static final String ColorBoostOffsetPreferenceKey = "preference_color_boost_offset";
+    public static final String ColorBoostOffsetDefault = "0.000";
+    public static final String ColorBoostSaturationPreferenceKey = "preference_color_boost_saturation";
+    public static final String ColorBoostSaturationDefault = "1.000";
+    public static final String ColorBoostHuePreferenceKey = "preference_color_boost_hue";
+    public static final String ColorBoostHueDefault = "0.000";
+
+    /** [REALCAMMI FORK 2026-08-31] Persists the chosen metering mode (Matrix/Center-weighted/Spot)
+     *  across app restarts and camera re-opens, and so it's captured by Save/Restore Settings
+     *  like every other SharedPreference. Stored as a readable string (not an ordinal/int) so a
+     *  saved settings .xml file is self-explanatory if inspected by hand.
+     */
+    public static final String MeteringModePreferenceKey = "preference_metering_mode";
+    public static final String MeteringModeValueMatrix = "matrix";
+    public static final String MeteringModeValueCenterWeighted = "center_weighted";
+    public static final String MeteringModeValueSpot = "spot";
+    public static final String MeteringModeDefault = MeteringModeValueMatrix;
+
     public static final String RawPreferenceKey = "preference_raw";
 
     public static final String AllowRawForExpoBracketingPreferenceKey = "preference_raw_expo_bracketing";
@@ -133,6 +169,10 @@ public class PreferenceKeys {
     public static final String OpenCVSharpenPreferenceKey   = "preference_opencv_sharpen";
 
     public static final String OpenCVNRPreferenceKey        = "preference_opencv_nr";
+    // [REALCAMMI FORK] Manual NR strength preset (LOWER_LIGHT,LIGHT/MEDIUM/STRONG), used only when AI Scene
+    // Detection is off. When AI Scene Detection is on, it overrides this and manages strength
+    // itself (LOW_LIGHT -> STRONG, else -> LOWER_LIGHT) — see PostProcessing.postProcessBitmap().
+    public static final String NRStrengthPreferenceKey       = "preference_opencv_nr_strength";
 
     public static final String OpenCVCLAHEPreferenceKey     = "preference_opencv_clahe";
     // [REALCAMMI FORK] natural depth-of-field / portrait background blur, applied post-capture
@@ -148,6 +188,25 @@ public class PreferenceKeys {
 
     public static final String AutoHDRPreferenceKey = "preference_auto_hdr";
     public static final String AISceneDetectionPreferenceKey = "preference_ai_scene_detection"; // [REALCAMMI FORK]
+    // [REALCAMMI FORK] Auto Exposure Correction: independent of AISceneDetectionPreferenceKey,
+    // same pattern as AutoHDRPreferenceKey - applies -EV automatically on OVEREXPOSED scenes.
+    public static final String AutoExposureCorrectionPreferenceKey = "preference_auto_exposure_correction";
+    // [REALCAMMI FORK] Auto Night Mode: independent of AISceneDetectionPreferenceKey, same
+    // extension-reopen pattern as AutoHDRPreferenceKey - reopens in EXTENSION_NIGHT on LOW_LIGHT.
+    public static final String AutoNightModePreferenceKey = "preference_auto_night_mode";
+    // [REALCAMMI FORK] Internal-only marker (no Settings UI entry), not a user preference. Set
+    // true right when an Auto HDR/Night software fallback switches PhotoMode away from Standard,
+    // cleared back to false once it successfully restores PhotoMode to Standard. Checked once on
+    // MainActivity.onResume() - if found true there, the previous fallback cycle never completed
+    // (app was killed/backgrounded mid-flow), so PhotoMode is force-reset to Standard and this
+    // marker cleared, instead of leaving the user silently stuck in HDR/NoiseReduction mode.
+    public static final String AutoFallbackPendingPreferenceKey = "internal_auto_fallback_pending";
+    // [REALCAMMI FORK] Internal-only marker (no Settings UI entry). Stashes the user's own
+    // "Expo Bracketing N Images" value while the Auto HDR software fallback is engaged, so it
+    // can force exactly 3 images (the only count ImageSaver's HDR merge supports - see
+    // ImageSaver.saveImageNow()'s "expected either 1 or 3 images for hdr" check) without
+    // permanently overwriting the user's own preference for manual Expo Bracketing mode.
+    public static final String AutoHDRFallbackPrevNImagesPreferenceKey = "internal_auto_hdr_fallback_prev_n_images";
 
 
     public static final String HDRSaveExpoPreferenceKey = "preference_hdr_save_expo";
@@ -159,6 +218,17 @@ public class PreferenceKeys {
     public static final String NRSaveExpoPreferenceKey = "preference_nr_save";
 
     public static final String FastBurstNImagesPreferenceKey = "preference_fast_burst_n_images";
+
+    // [REALCAMMI FORK 2026-09-18] "Best Shot" - only takes effect in Standard photo mode (see
+    // MyApplicationInterface.getBestShotPref()). Off by default: this quietly reuses the FastBurst
+    // capture mechanism to take a few quick frames instead of one, then keeps only the sharpest
+    // and discards the rest - see onPictureTaken()'s handleBestShotFrame() for the full design.
+    // Unlike this fork's earlier fixes (calibrating existing, already-working code), this is new
+    // capture-path logic that has not been tested on real hardware - treat with extra caution and
+    // verify carefully (photo count, timing, memory) before trusting it, and this preference is
+    // the way to fully disable it if anything looks wrong.
+    public static final String BestShotPreferenceKey = "preference_best_shot";
+    public static final int BestShotNImages = 3;
 
     public static final String LocationPreferenceKey = "preference_location";
 
@@ -374,6 +444,30 @@ public class PreferenceKeys {
     public static final String VideoLogPreferenceKey = "preference_video_log";
 
     public static final String VideoProfileGammaPreferenceKey = "preference_video_profile_gamma";
+
+    /** [REALCAMMI FORK 2026-09-02] Blend strength (0-100%) for the Image Profile curve
+     *  (Rec709/sRGB/Log/Gamma/S-Log3/JT*) applied post-capture in PostProcessing.applyImageProfileMat().
+     *  0 = profile fully OFF (identical visual result to TONEMAPPROFILE_OFF, short-circuited before
+     *  the LUT is even built); 100 = the profile's full, unblended effect.
+     *  [REALCAMMI FIX 2026-09-15] Corrected this comment, which used to claim 100 was "the
+     *  default, so existing users see no change until they adjust this" - that was the actually
+     *  outdated part, not the "10" value below. Confirmed with the author: 10 is the intentional
+     *  default - the full 100% effect looks exaggerated/overpowering out of the box, so this
+     *  starts subtle and the user raises it to taste via the Settings slider.
+     */
+    public static final String ImageProfileStrengthPreferenceKey = "preference_image_profile_strength";
+    public static final String ImageProfileStrengthDefault = "10";
+
+    /** [REALCAMMI FORK 2026-09-04] Blend strength (0-100%) for the optional "Sharpening (OpenCV)"
+     *  effect (PostProcessing.applyOpenCVSharpenMat()) - separate from the always-on baseline
+     *  sharpen, which this does not affect. 0 = no extra sharpening from this step (the on-screen
+     *  toggle can still be left on with no visible effect); 100 = today's existing full effect
+     *  (including the scene-adaptive indoor boost).
+     *  [REALCAMMI FIX 2026-09-15] Same correction as ImageProfileStrengthDefault above: 10 is the
+     *  intentional default (100 looks exaggerated/overpowering straight away), not a leftover bug.
+     */
+    public static final String SharpnessStrengthPreferenceKey = "preference_sharpness_strength";
+    public static final String SharpnessStrengthDefault = "10";
 
     public static final String VideoMaxDurationPreferenceKey = "preference_video_max_duration";
 

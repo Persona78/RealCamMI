@@ -1,39 +1,19 @@
 package net.sourceforge.opencamera.realcammi;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
-
-import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
-import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
-import net.sourceforge.opencamera.realcammi.preview.ApplicationInterface;
-import net.sourceforge.opencamera.realcammi.preview.BasicApplicationInterface;
-import net.sourceforge.opencamera.realcammi.preview.Preview;
-import net.sourceforge.opencamera.realcammi.preview.VideoProfile;
-import net.sourceforge.opencamera.realcammi.ui.DrawPreview;
-
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
-//import android.location.Address; // don't use until we have info for data privacy!
-//import android.location.Geocoder; // don't use until we have info for data privacy!
 import android.hardware.camera2.CameraExtensionCharacteristics;
 import android.location.Location;
 import android.media.MediaMetadataRetriever;
@@ -45,7 +25,6 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.ParcelFileDescriptor;
-import androidx.preference.PreferenceManager;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.Settings;
@@ -58,9 +37,32 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowMetrics;
 import android.widget.ImageButton;
-import android.app.ActivityManager;
 
 import androidx.annotation.RequiresApi;
+import androidx.preference.PreferenceManager;
+
+import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
+import net.sourceforge.opencamera.realcammi.cameracontroller.RawImage;
+import net.sourceforge.opencamera.realcammi.preview.ApplicationInterface;
+import net.sourceforge.opencamera.realcammi.preview.BasicApplicationInterface;
+import net.sourceforge.opencamera.realcammi.preview.Preview;
+import net.sourceforge.opencamera.realcammi.preview.VideoProfile;
+import net.sourceforge.opencamera.realcammi.ui.DrawPreview;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+
+//import android.location.Address; // don't use until we have info for data privacy!
+//import android.location.Geocoder; // don't use until we have info for data privacy!
 
 /** Our implementation of ApplicationInterface, see there for details.
  */
@@ -97,6 +99,13 @@ public class MyApplicationInterface extends BasicApplicationInterface {
 
     private final static float panorama_pics_per_screen = 3.33333f;
     private int n_capture_images = 0; // how many calls to onPictureTaken() since the last call to onCaptureStarted()
+    // [REALCAMMI FORK 2026-09-18] "Best Shot" buffer state - deliberately separate from
+    // n_capture_images above (which several other things, e.g. force_suffix numbering, already
+    // depend on) so Best Shot's internal frame-counting can never interfere with that. Reset in
+    // onCaptureStarted(), same as n_capture_images.
+    private int best_shot_frame_count = 0;
+    private byte [] best_shot_bytes = null;
+    private float best_shot_sharpness = -1.0f;
     private int n_capture_images_raw = 0; // how many calls to onRawPictureTaken() since the last call to onCaptureStarted()
     private int n_panorama_pics = 0;
     public final static int max_panorama_pics_c = 10; // if we increase this, review against memory requirements under MainActivity.supportsPanorama()
@@ -630,11 +639,11 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             ActivityManager.MemoryInfo memInfo = new ActivityManager.MemoryInfo();
             actManager.getMemoryInfo(memInfo);
             long totalRamGb = memInfo.totalMem / (1024L * 1024L * 1024L);
-            if( totalRamGb <= 4 ) {
+            if( totalRamGb <= 4L ) {
                 constraints.max_mp = 8000000; // low RAM: 8MP ceiling
             }
-            else if( totalRamGb <= 8 ) {
-                constraints.max_mp = 12000000; // mid-range RAM: 12MP ceiling (o valor fixo que tinhas)
+            else if( totalRamGb <= 8L ) {
+                constraints.max_mp = 12000000; // mid-range RAM: 12MP ceiling
             }
             else {
                 constraints.max_mp = 24000000; // high RAM: 24MP ceiling
@@ -707,10 +716,12 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         // Pro's Dimensity 6300 with only 2 performance cores vs the Xiaomi's 4) for a fairly small
         // reduction in double-compression softness. Deliberate trade-off, decided 2026-07-28.
         //
-        // Quality 100 IS still forced when zoom > 1x on is_xiaomi/is_ulefone devices: see
-        // CameraController2.onImageAvailable()'s software crop workaround, which decodes, crops,
-        // and recompresses the JPEG itself using this same getImageQualityPref() value - a low
-        // starting quality there would compound with the crop's inherent resolution loss.
+        // Quality 100 IS still forced whenever zoom > 1x, on ALL devices - there is no
+        // is_xiaomi/is_ulefone check here.
+        // [REALCAMMI COMMENT FIX 2026-10-08] The comment used to say this only applied to
+        // Xiaomi/Ulefone because of the software crop in CameraController2.onImageAvailable();
+        // the code never had that device check, and the software crop has since been removed
+        // (section 2 of the README). The rule itself is unchanged.
         if( main_activity.getPreview().getZoomRatio() > 1.0f )
             return 100;
 
@@ -982,6 +993,63 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             MyDebug.logStackTrace(TAG, "failed to parse gamma value: " + gamma_value, e);
         }
         return gamma;
+    }
+
+    /** [REALCAMMI FORK 2026-09-02] Blend strength (0-100) for the Image Profile curve applied
+     *  post-capture in PostProcessing.applyImageProfileMat() - see
+     *  PreferenceKeys.ImageProfileStrengthPreferenceKey. Falls back to the documented default
+     *  (10, a deliberately subtle starting point - the full 100% effect looks exaggerated/
+     *  overpowering out of the box) on any parse failure, and clamps to [0,100] in case a
+     *  malformed/edited preference value ever falls outside that range.
+     */
+    public float getImageProfileStrength() {
+        String strength_value = sharedPreferences.getString(PreferenceKeys.ImageProfileStrengthPreferenceKey, PreferenceKeys.ImageProfileStrengthDefault);
+        float strength;
+        try {
+            strength = Float.parseFloat(strength_value);
+        }
+        catch(NumberFormatException e) {
+            MyDebug.logStackTrace(TAG, "failed to parse image profile strength value: " + strength_value, e);
+            // [REALCAMMI FIX 2026-09-15] Was a hardcoded 100.0f - jumped straight to the strong,
+            // "exaggerated" end of the effect on a parse error, rather than the same subtle
+            // default a fresh install gets. Parses PreferenceKeys.ImageProfileStrengthDefault
+            // itself instead, so this fallback always tracks that constant rather than needing
+            // to be kept in sync with it by hand.
+            try {
+                strength = Float.parseFloat(PreferenceKeys.ImageProfileStrengthDefault);
+            }
+            catch(NumberFormatException e2) {
+                strength = 10.0f;
+            }
+        }
+        return Math.max(0.0f, Math.min(100.0f, strength));
+    }
+
+    /** [REALCAMMI FORK 2026-09-04] Blend strength (0-100) for the optional "Sharpening (OpenCV)"
+     *  effect applied in PostProcessing.applyOpenCVSharpenMat() - see
+     *  PreferenceKeys.SharpnessStrengthPreferenceKey. Falls back to the documented default (10,
+     *  the same deliberately subtle starting point as Image Profile Strength above), clamped to
+     *  [0,100].
+     */
+    public float getSharpnessStrength() {
+        String strength_value = sharedPreferences.getString(PreferenceKeys.SharpnessStrengthPreferenceKey, PreferenceKeys.SharpnessStrengthDefault);
+        float strength;
+        try {
+            strength = Float.parseFloat(strength_value);
+        }
+        catch(NumberFormatException e) {
+            MyDebug.logStackTrace(TAG, "failed to parse sharpness strength value: " + strength_value, e);
+            // [REALCAMMI FIX 2026-09-15] Same fix as getImageProfileStrength() above: parse the
+            // actual default constant instead of a hardcoded 100.0f, so a parse error falls back
+            // to the same subtle default as a fresh install, not the strong end of the effect.
+            try {
+                strength = Float.parseFloat(PreferenceKeys.SharpnessStrengthDefault);
+            }
+            catch(NumberFormatException e2) {
+                strength = 10.0f;
+            }
+        }
+        return Math.max(0.0f, Math.min(100.0f, strength));
     }
 
     @Override
@@ -1342,6 +1410,18 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         return sharedPreferences.getBoolean(PreferenceKeys.OpenCVNRPreferenceKey, false);
     }
 
+    // [REALCAMMI FORK] Manual NR strength preset ("lower light, light"/"medium"/"strong"), used only when
+    // AI Scene Detection is off - see PostProcessing.postProcessBitmap(). Default "light" matches
+    // the previous hardcoded default for STANDARD/EXTREME_BACKLIT/INDOOR scenes.
+    // [REALCAMMI FIX 2026-09-19] The "lower light" fallback here already matched what the author
+    // wanted as the real default, but the XML's android:defaultValue="light" (in
+    // preferences_sub_photo.xml) didn't match it - since the XML default is what actually
+    // populates SharedPreferences on first use, "light" was the real-world default until that was
+    // corrected to "lower light" too, matching this fallback.
+    public String getNRStrengthPref() {
+        return sharedPreferences.getString(PreferenceKeys.NRStrengthPreferenceKey, "lower light");
+    }
+
     public boolean getOpenCVCLAHEPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.OpenCVCLAHEPreferenceKey, false);
     }
@@ -1362,10 +1442,101 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         return sharedPreferences.getBoolean(PreferenceKeys.AutoHDRPreferenceKey, false);
     }
 
+    // [REALCAMMI FORK] Auto HDR software fallback: when the vendor HDR camera extension isn't
+    // available (confirmed dead on the Xiaomi garnet - EXTENSION_HDR reports unsupported),
+    // falls back to Open Camera's own software exposure-bracketing HDR (PhotoMode.HDR - 3 shots
+    // at different exposures, merged), which only needs the standard Camera2 API and doesn't
+    // depend on any vendor extension. Only ever called from the Auto HDR trigger block in
+    // Preview.java, and only while getPhotoMode()==Standard (the trigger's own gate condition),
+    // so restoring to "preference_photo_mode_std" afterward is always correct - never needs to
+    // remember an arbitrary prior mode. Also sets/clears AutoFallbackPendingPreferenceKey - see
+    // restorePhotoModeIfOrphanedFallback() for why.
+    //
+    // Also forces "Expo Bracketing N Images" to exactly 3 while engaged, stashing the user's own
+    // value first and restoring it afterward. PhotoMode.HDR shares that same preference with the
+    // separate (non-merging) ExpoBracketing PhotoMode, which accepts any N - but ImageSaver's HDR
+    // merge only supports exactly 1 or 3 and throws a RuntimeException otherwise. Confirmed via a
+    // real device crash: the user had this set to 5 for manual ExpoBracketing testing, which the
+    // Auto HDR fallback silently inherited and crashed on.
+    public void setPhotoModeForAutoHDRFallback(boolean use_hdr) {
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(PreferenceKeys.PhotoModePreferenceKey,
+                use_hdr ? "preference_photo_mode_hdr" : "preference_photo_mode_std");
+        if( use_hdr ) {
+            String prev_n_images = sharedPreferences.getString(PreferenceKeys.ExpoBracketingNImagesPreferenceKey, "3");
+            editor.putString(PreferenceKeys.AutoHDRFallbackPrevNImagesPreferenceKey, prev_n_images);
+            editor.putString(PreferenceKeys.ExpoBracketingNImagesPreferenceKey, "3");
+        }
+        else {
+            String prev_n_images = sharedPreferences.getString(PreferenceKeys.AutoHDRFallbackPrevNImagesPreferenceKey, "3");
+            editor.putString(PreferenceKeys.ExpoBracketingNImagesPreferenceKey, prev_n_images);
+            editor.remove(PreferenceKeys.AutoHDRFallbackPrevNImagesPreferenceKey);
+        }
+        editor.putBoolean(PreferenceKeys.AutoFallbackPendingPreferenceKey, use_hdr);
+        editor.apply();
+    }
+
+    // [REALCAMMI FORK] Auto Night Mode software fallback: mirrors setPhotoModeForAutoHDRFallback()
+    // exactly, but for PhotoMode.NoiseReduction (burst capture, multiple frames aligned and
+    // averaged in software) instead of PhotoMode.HDR - used when the vendor Night camera
+    // extension isn't available (confirmed dead on the Xiaomi garnet - EXTENSION_NIGHT reports
+    // unsupported). Only ever called from the Auto Night Mode trigger block in Preview.java, and
+    // only while getPhotoMode()==Standard (the trigger's own gate condition), so restoring to
+    // "preference_photo_mode_std" afterward is always correct.
+    public void setPhotoModeForAutoNightFallback(boolean use_noise_reduction) {
+        sharedPreferences.edit().putString(PreferenceKeys.PhotoModePreferenceKey,
+                use_noise_reduction ? "preference_photo_mode_noise_reduction" : "preference_photo_mode_std")
+                .putBoolean(PreferenceKeys.AutoFallbackPendingPreferenceKey, use_noise_reduction)
+                .apply();
+    }
+
+    // [REALCAMMI FORK] Orphan guard for the two software fallbacks above. If the app process
+    // was killed or backgrounded between switching PhotoMode away from Standard and the
+    // onCompleted() callback that would have switched it back (see Preview.java's
+    // want_auto_hdr_software_now / want_auto_night_software_now cleanup blocks), the in-memory
+    // flags that track "mid-fallback" are lost on restart, but the PhotoMode preference itself
+    // stays stuck on HDR/NoiseReduction, silently changing every future photo's behaviour.
+    // AutoFallbackPendingPreferenceKey is a persisted marker that survives process death: call
+    // this once from MainActivity.onResume() to detect and repair that stuck state.
+    public void restorePhotoModeIfOrphanedFallback() {
+        if( sharedPreferences.getBoolean(PreferenceKeys.AutoFallbackPendingPreferenceKey, false) ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "restorePhotoModeIfOrphanedFallback: found orphaned fallback, resetting PhotoMode to Standard");
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putString(PreferenceKeys.PhotoModePreferenceKey, "preference_photo_mode_std");
+            editor.putBoolean(PreferenceKeys.AutoFallbackPendingPreferenceKey, false);
+            // [REALCAMMI FORK] Also restores "Expo Bracketing N Images" if it was stashed by an
+            // orphaned Auto HDR fallback (see setPhotoModeForAutoHDRFallback()) - otherwise the
+            // user's own manual ExpoBracketing preference would stay silently forced to 3.
+            if( sharedPreferences.contains(PreferenceKeys.AutoHDRFallbackPrevNImagesPreferenceKey) ) {
+                String prev_n_images = sharedPreferences.getString(PreferenceKeys.AutoHDRFallbackPrevNImagesPreferenceKey, "3");
+                editor.putString(PreferenceKeys.ExpoBracketingNImagesPreferenceKey, prev_n_images);
+                editor.remove(PreferenceKeys.AutoHDRFallbackPrevNImagesPreferenceKey);
+            }
+            editor.apply();
+        }
+    }
+
+    // [REALCAMMI FORK] Auto Exposure Correction: applies -EV automatically when the AI detects
+    // an OVEREXPOSED scene, independent of getAISceneDetectionPref() - same pattern as Auto HDR.
+    // See setSceneCategoryCallback() in Preview.java for where this is actually applied.
+    public boolean getAutoExposureCorrectionPref() {
+        return sharedPreferences.getBoolean(PreferenceKeys.AutoExposureCorrectionPreferenceKey, false);
+    }
+
+    // [REALCAMMI FORK] Auto Night Mode: reopens the camera in the vendor Night extension
+    // (EXTENSION_NIGHT) automatically when the AI detects a LOW_LIGHT scene, independent of
+    // getAISceneDetectionPref() - same reopen pattern as Auto HDR. See the trigger block near
+    // takePicture() in Preview.java.
+    public boolean getAutoNightModePref() {
+        return sharedPreferences.getBoolean(PreferenceKeys.AutoNightModePreferenceKey, false);
+    }
+
     // [REALCAMMI FORK] Governs whether the analysis reader feeds SceneDetector for the
     // LOW_LIGHT/INDOOR categories (NR strength / sharpen amount adjustments in PostProcessing).
-    // Independent of Auto HDR (EXTREME_BACKLIT) - see setAnalysisEnabled() in Preview.java,
-    // which enables the analysis reader when EITHER this or getAutoHDRPref() is true.
+    // Independent of Auto HDR (EXTREME_BACKLIT), Auto Exposure Correction (OVEREXPOSED), or Auto
+    // Night Mode (LOW_LIGHT) - see setAnalysisEnabled() in Preview.java, which enables the
+    // analysis reader when ANY of the four is true.
     public boolean getAISceneDetectionPref() {
         return sharedPreferences.getBoolean(PreferenceKeys.AISceneDetectionPreferenceKey, false);
     }
@@ -1656,15 +1827,35 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         return photo_mode == PhotoMode.FocusBracketing;
     }
 
+    // [REALCAMMI FORK 2026-09-18] "Best Shot" - see PreferenceKeys.BestShotPreferenceKey's
+    // comment for the full design rationale. Only ever true for Standard photo mode - deliberately
+    // excludes video snapshot mode and capture-intent requests (another app waiting for exactly
+    // one photo back promptly should always get exactly one, unmodified by this).
+    private boolean getBestShotPref() {
+        if( isImageCaptureIntent() )
+            return false;
+        if( main_activity.getPreview().isVideo() )
+            return false;
+        if( getPhotoMode() != PhotoMode.Standard )
+            return false;
+        return sharedPreferences.getBoolean(PreferenceKeys.BestShotPreferenceKey, false);
+    }
+
     @Override
     public boolean isCameraBurstPref() {
         PhotoMode photo_mode = getPhotoMode();
-        return photo_mode == PhotoMode.FastBurst || photo_mode == PhotoMode.NoiseReduction;
+        return photo_mode == PhotoMode.FastBurst || photo_mode == PhotoMode.NoiseReduction || getBestShotPref();
     }
 
     @Override
     public int getBurstNImages() {
         PhotoMode photo_mode = getPhotoMode();
+        if( getBestShotPref() ) {
+            // deliberately does not read FastBurstNImagesPreferenceKey - Best Shot's frame count
+            // is its own fixed, deliberately small constant (see PreferenceKeys.BestShotNImages),
+            // independent of whatever the user has FastBurst's own count set to.
+            return PreferenceKeys.BestShotNImages;
+        }
         if( photo_mode == PhotoMode.FastBurst ) {
             String n_images_value = sharedPreferences.getString(PreferenceKeys.FastBurstNImagesPreferenceKey, "5");
             int n_images;
@@ -1700,10 +1891,26 @@ public class MyApplicationInterface extends BasicApplicationInterface {
     public NRModePref getNRModePref() {
 		/*if( MyDebug.LOG )
 			Log.d(TAG, "nr_mode: " + nr_mode);*/
+        // Explicit manual choice always wins, whether or not AI Scene Detection is on.
         //noinspection SwitchStatementWithTooFewBranches
         switch( nr_mode ) {
             case "preference_nr_mode_low_light":
                 return NRModePref.NRMODE_LOW_LIGHT;
+        }
+        // [REALCAMMI FORK 2026-09-18] Was manual-only: the user had to remember to open the "NR
+        // mode" popup and switch to "Low Light" themselves for it to use more frames
+        // (N_IMAGES_NR_DARK_LOW_LIGHT, now correctly 15 after the swapped-constants fix - see
+        // CameraController.java) and longer per-frame exposure. This is exactly the kind of thing
+        // GCam's Night Sight does automatically based on how dark the scene actually is, rather
+        // than requiring a manual mode switch - so when AI Scene Detection is on and it reports
+        // the live scene as LOW_LIGHT, auto-upgrade to the Low Light NR tier here too, the same
+        // "AI Scene Detection on -> scene-based; off -> respect the user's own setting" pattern
+        // already used for OpenCV NR strength selection in PostProcessing.java's consolidated
+        // block. Only affects "NR" photo mode itself (getBurstForNoiseReduction() gates that
+        // higher up) - has no effect in any other photo mode.
+        if( this.getAISceneDetectionPref() && main_activity.getPreview().getCameraController() != null
+                && main_activity.getPreview().getCameraController().getCurrentSceneCategory() == SceneDetector.SceneCategory.LOW_LIGHT ) {
+            return NRModePref.NRMODE_LOW_LIGHT;
         }
         return NRModePref.NRMODE_NORMAL;
     }
@@ -1752,7 +1959,13 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         int n_images;
         PhotoMode photo_mode = getPhotoMode();
         if( photo_mode == PhotoMode.HDR ) {
-            // always set 3 images for HDR
+            // [REALCAMMI FORK] Fixed 2026-08-12: this said "always set 3 images for HDR" but
+            // actually hardcoded 5, contradicting its own comment. ImageSaver.saveImageNow()'s
+            // HDR merge only supports exactly 1 or 3 images and throws a RuntimeException
+            // otherwise - confirmed via a real device crash. This safeguard is now independent
+            // of whatever the user has "Exposure Bracketing" set to for manual ExpoBracketing
+            // mode (which can use any N up to max_expo_bracketing_n_images) - HDR always gets 3,
+            // whether triggered manually or by Auto HDR.
             n_images = 3;
         }
         else {
@@ -1763,7 +1976,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             catch(NumberFormatException exception) {
                 if( MyDebug.LOG )
                     Log.e(TAG, "n_images_s invalid format: " + n_images_s);
-                n_images = 3;
+                n_images = 5;
             }
         }
         if( MyDebug.LOG )
@@ -1779,7 +1992,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         PhotoMode photo_mode = getPhotoMode();
         if( photo_mode == PhotoMode.HDR ) {
             // always set 2 stops for HDR
-            n_stops = 2.0;
+            n_stops = 3.0;
         }
         else {
             String n_stops_s = sharedPreferences.getString(PreferenceKeys.ExpoBracketingStopsPreferenceKey, "2");
@@ -1789,7 +2002,7 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             catch(NumberFormatException exception) {
                 if( MyDebug.LOG )
                     Log.e(TAG, "n_stops_s invalid format: " + n_stops_s);
-                n_stops = 2.0;
+                n_stops = 3.0;
             }
         }
         if( MyDebug.LOG )
@@ -2982,6 +3195,12 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             Log.d(TAG, "onCaptureStarted");
         n_capture_images = 0;
         n_capture_images_raw = 0;
+        // [REALCAMMI FORK 2026-09-18] Reset the Best Shot buffer at the start of every capture
+        // sequence too - see the fields' own comment for why this is separate from
+        // n_capture_images above.
+        best_shot_frame_count = 0;
+        best_shot_bytes = null;
+        best_shot_sharpness = -1.0f;
         drawPreview.onCaptureStarted();
 
         if( getPhotoMode() == PhotoMode.X_Night ) {
@@ -3783,6 +4002,15 @@ public class MyApplicationInterface extends BasicApplicationInterface {
         if( MyDebug.LOG )
             Log.d(TAG, "onPictureTaken");
 
+        // [REALCAMMI FORK 2026-09-18] "Best Shot" - handled entirely inside
+        // handleBestShotFrame(), before n_capture_images even increments, so that when the
+        // preference is off (the default) this method's behaviour below is completely
+        // unaffected. See PreferenceKeys.BestShotPreferenceKey's comment for the design
+        // rationale.
+        if( getBestShotPref() ) {
+            return handleBestShotFrame(data, current_date, location);
+        }
+
         n_capture_images++;
         if( MyDebug.LOG )
             Log.d(TAG, "n_capture_images is now " + n_capture_images);
@@ -3796,6 +4024,82 @@ public class MyApplicationInterface extends BasicApplicationInterface {
             Log.d(TAG, "onPictureTaken complete, success: " + success);
 
         return success;
+    }
+
+    /** [REALCAMMI FORK 2026-09-18] Handles one frame of a "Best Shot" burst (Standard photo mode
+     *  only - see getBestShotPref()). Buffers frames internally: decodes each to a downsampled
+     *  Bitmap purely to score sharpness (reusing HDRProcessor.computeSharpness(), the same metric
+     *  "lucky imaging" uses for burst NR - see section 6a of the README), keeps only the sharpest
+     *  frame's raw JPEG bytes, and discards the rest. Calls saveImage() exactly once, on the
+     *  final frame of the burst, using the winning bytes - so exactly one photo is ever written
+     *  to disk per shutter press, same as a normal Standard-mode shot, just chosen from a few
+     *  quick candidates instead of only the one the shutter happened to catch.
+     *  Always returns true for a frame it has buffered without saving (nothing has gone wrong -
+     *  the burst just isn't finished yet); returns the real saveImage() result on the final frame.
+     */
+    private boolean handleBestShotFrame(byte [] data, Date current_date, Location location) {
+        best_shot_frame_count++;
+        if( MyDebug.LOG )
+            Log.d(TAG, "handleBestShotFrame: frame " + best_shot_frame_count + " of " + getBurstNImages());
+
+        float sharpness = -1.0f;
+        Bitmap sample_bitmap = null;
+        try {
+            // Only need the same coarse sample grid HDRProcessor.computeSharpness() itself reads
+            // (100 points) - not full resolution. inSampleSize=4 keeps this decode fast and
+            // memory-light regardless of the camera's actual output resolution.
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = 4;
+            sample_bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, options);
+            if( sample_bitmap != null ) {
+                sharpness = HDRProcessor.computeSharpness(sample_bitmap, sample_bitmap.getWidth(), sample_bitmap.getHeight());
+            }
+        }
+        catch(Exception e) {
+            MyDebug.logStackTrace(TAG, "Best Shot: failed to decode/score frame " + best_shot_frame_count, e);
+        }
+        finally {
+            if( sample_bitmap != null )
+                sample_bitmap.recycle();
+        }
+
+        // Keep this frame's bytes if it's the very first frame seen this burst (guarantees there
+        // is always *something* to save even if every single decode in the burst fails - a
+        // failed decode scores -1.0f, so it can only ever "win" by being the first frame with
+        // nothing yet to beat), or if it scored higher than the current best.
+        if( best_shot_bytes == null || sharpness > best_shot_sharpness ) {
+            if( MyDebug.LOG )
+                Log.d(TAG, "Best Shot: frame " + best_shot_frame_count + " is new best, sharpness " + sharpness);
+            best_shot_bytes = data;
+            best_shot_sharpness = sharpness;
+        }
+
+        int n_images = getBurstNImages();
+        if( best_shot_frame_count >= n_images ) {
+            // Last frame of the burst - now actually save the winning frame, the same way a
+            // normal Standard-mode single-frame shot is saved.
+            if( MyDebug.LOG )
+                Log.d(TAG, "Best Shot: burst complete, saving winning frame, sharpness " + best_shot_sharpness);
+            byte [] winning_bytes = best_shot_bytes;
+            // Reset all buffer state before saving (rather than after), so that an exception
+            // thrown from saveImage() below can never leave stale state around for the next
+            // capture sequence to accidentally pick up.
+            best_shot_bytes = null;
+            best_shot_frame_count = 0;
+            best_shot_sharpness = -1.0f;
+
+            n_capture_images++;
+            List<byte []> images = new ArrayList<>();
+            images.add(winning_bytes);
+            boolean success = saveImage(false, images, current_date, location);
+            if( MyDebug.LOG )
+                Log.d(TAG, "Best Shot: onPictureTaken complete, success: " + success);
+            return success;
+        }
+
+        // Not the last frame yet - this frame has been buffered internally; nothing saved yet on
+        // this call, and nothing has gone wrong.
+        return true;
     }
 
     @Override

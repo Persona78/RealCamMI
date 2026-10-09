@@ -5,11 +5,12 @@ import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
+
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceManager;
-import android.util.Log;
 
 import net.sourceforge.opencamera.realcammi.preview.Preview;
 import net.sourceforge.opencamera.realcammi.ui.ArraySeekBarPreference;
@@ -258,7 +259,7 @@ public class PreferenceSubPhoto extends PreferenceSubScreen {
             pg2.removePreference(pref2);
         }
 
-        if( !supports_expo_bracketing || max_expo_bracketing_n_images <= 3 ) {
+        if( !supports_expo_bracketing || max_expo_bracketing_n_images < 3 ) {
             Preference pref = findPreference("preference_expo_bracketing_n_images");
             //PreferenceGroup pg = (PreferenceGroup) this.findPreference("preference_screen_photo_settings");
             PreferenceGroup pg = (PreferenceGroup)this.findPreference("preferences_root");

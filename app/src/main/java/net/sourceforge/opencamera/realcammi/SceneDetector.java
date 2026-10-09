@@ -16,12 +16,14 @@ import java.util.Locale;
 /** [REALCAMMI FORK] AI scene detection — Piece 2 of the "adjust before capture, not after"
  *  feature (see CameraController2's analysisImageReader, added in Piece 1).
  *
- *  Classifies each throttled preview frame into one of a minimal 3-category ruleset, combining
+ *  Classifies each throttled preview frame into one of a minimal 5-category ruleset (STANDARD, EXTREME_BACKLIT, OVEREXPOSED, LOW_LIGHT, INDOOR), combining
  *  three different signals, each used for what it's actually good at:
  *
- *   - EXTREME_BACKLIT: cheap synchronous luminance-histogram check on the frame's own Y plane.
- *     No MLKit involved — MLKit's generic Image Labeling model has no "backlit" label, this is
- *     plain histogram math (significant population in both the dark and near-clipped bins).
+ *   - EXTREME_BACKLIT / OVEREXPOSED: cheap synchronous luminance-histogram check on the frame's
+ *     own Y plane. No MLKit involved — plain histogram math. EXTREME_BACKLIT needs a substantial
+ *     dark population alongside a near-clipped one (mixed contrast); OVEREXPOSED is the inverse,
+ *     almost entirely near-clipped with essentially no shadow detail (e.g. beach/snow/sky-filling
+ *     shots) - the two are mutually exclusive by construction.
  *   - LOW_LIGHT: reuses HDRProcessor.sceneIsLowLight(iso, exposure_time), the same
  *     already-tested heuristic the Auto HDR feature relies on — not re-derived from the
  *     analysis frame's own pixel brightness, which would be normalised by preview AE gain
@@ -30,8 +32,9 @@ import java.util.Locale;
  *     matches generic content labels (furniture, room, wall, ceiling, etc.) against a curated
  *     keyword list.
  *
- *  Priority order when multiple signals fire on the same frame: backlit > low-light > indoor >
- *  standard (default/no strong signal). Backlit and low-light are checked first and, if
+ *  Priority order when multiple signals fire on the same frame: backlit/overexposed (mutually
+ *  exclusive) > low-light > indoor > standard (default/no strong signal). The histogram checks
+ *  and low-light are checked first and, if
  *  positive, skip the MLKit call entirely for that frame — saves battery/inference time on
  *  frames where we already have a confident answer without needing content classification.
  *
@@ -46,6 +49,9 @@ public class SceneDetector {
         STANDARD,        // default - no strong signal for any of the categories below
         EXTREME_BACKLIT,
         LOW_LIGHT,
+        OVEREXPOSED,     // [REALCAMMI FORK] uniformly very bright, no shadow detail - see
+                          // classifyByLuminanceHistogram(). Distinct from EXTREME_BACKLIT,
+                          // which needs both dark AND near-clipped populations at once.
         INDOOR
     }
 
@@ -58,6 +64,11 @@ public class SceneDetector {
     private static final int BRIGHT_BIN_THRESHOLD = 220; // sample counts as "near-clipped" above this
     private static final float BACKLIT_DARK_FRACTION = 0.25f;   // >=25% of sampled pixels dark
     private static final float BACKLIT_BRIGHT_FRACTION = 0.15f; // >=15% of sampled pixels near-clipped
+    // [REALCAMMI FORK] OVEREXPOSED thresholds: mirrors the backlit check but inverted - looks
+    // for a scene that is almost entirely near-clipped with essentially no shadow detail at
+    // all (unlike backlit, which needs a substantial dark population too).
+    private static final float OVEREXPOSED_BRIGHT_FRACTION = 0.60f; // >=60% of sampled pixels near-clipped
+    private static final float OVEREXPOSED_DARK_FRACTION_MAX = 0.05f; // <=5% of sampled pixels dark
     private static final int HISTOGRAM_SAMPLE_STEP = 4; // sample every 4th pixel in each dimension
 
     // MLKit generic Image Labeling content labels associated with indoor scenes.
@@ -77,6 +88,8 @@ public class SceneDetector {
 
     // [REALCAMMI FORK] Thread-safe synchronization layers for background pipelines
     private volatile SceneCategory current_category = SceneCategory.STANDARD;
+    // [REALCAMMI FIX 2026-10-07] pending_* are guarded by synchronized(this) in reportCandidate():
+    // it can be called from the MLKit callback thread and from the camera analysis thread.
     private SceneCategory pending_category = SceneCategory.STANDARD;
     private int pending_count = 0;
     private volatile boolean mlkit_busy = false;
@@ -100,8 +113,11 @@ public class SceneDetector {
      */
     public void classifyFrame(Image image, int rotation_degrees, int iso, long exposure_time_ns, boolean has_metering) {
         SceneCategory histogram_result = classifyByLuminanceHistogram(image);
-        if( histogram_result == SceneCategory.EXTREME_BACKLIT ) {
-            reportCandidate(SceneCategory.EXTREME_BACKLIT);
+        // [REALCAMMI FORK] Both histogram-based categories (EXTREME_BACKLIT, OVEREXPOSED) are
+        // reported directly and skip MLKit/LOW_LIGHT for that frame - same reasoning as before:
+        // we already have a confident, cheap answer without needing further classification.
+        if( histogram_result == SceneCategory.EXTREME_BACKLIT || histogram_result == SceneCategory.OVEREXPOSED ) {
+            reportCandidate(histogram_result);
             image.close();
             return;
         }
@@ -182,6 +198,12 @@ public class SceneDetector {
             return SceneCategory.EXTREME_BACKLIT;
         }
 
+        // [REALCAMMI FORK] Uniformly overexposed scenario: mostly near-clipped highlights with
+        // essentially no shadow detail (beach/snow/sky-filling shots, not a mixed backlit scene).
+        if (bright_fraction >= OVEREXPOSED_BRIGHT_FRACTION && dark_fraction <= OVEREXPOSED_DARK_FRACTION_MAX) {
+            return SceneCategory.OVEREXPOSED;
+        }
+
         return SceneCategory.STANDARD;
     }
 
@@ -215,22 +237,31 @@ public class SceneDetector {
      * Smooths out transition fluctuations to avoid rapid state bouncing in active capture requests.
      */
     private void reportCandidate(SceneCategory candidate) {
-        if (candidate == pending_category) {
-            pending_count++;
-            if (pending_count >= HYSTERESIS_COUNT) {
-                if (current_category != pending_category) {
+        SceneCategory changed_to = null;
+        synchronized (this) {
+            if (candidate == pending_category) {
+                pending_count++;
+                if (pending_count >= HYSTERESIS_COUNT && current_category != pending_category) {
                     current_category = pending_category;
-                    if (listener != null) {
-                        listener.onSceneCategoryChanged(current_category);
-                    }
-                    if (MyDebug.LOG) {
-                        Log.i(TAG, "Scene stabilized. Transmitted new profile to HAL3: " + current_category.name());
-                    }
+                    changed_to = current_category;
                 }
+            } else {
+                pending_category = candidate;
+                pending_count = 1;
             }
-        } else {
-            pending_category = candidate;
-            pending_count = 1;
+        }
+        // Notify outside the lock so a slow listener can never block the other analysis thread.
+        if (changed_to != null) {
+            if (listener != null) {
+                listener.onSceneCategoryChanged(changed_to);
+            }
+            if (MyDebug.LOG) {
+                // [REALCAMMI FORK] Corrected 2026-08-10: previous message claimed this
+                // "transmitted a new profile to HAL3", which never happened - this is a
+                // plain Java callback (listener.onSceneCategoryChanged() above), nothing
+                // is sent to the camera HAL itself.
+                Log.i(TAG, "Scene stabilized: " + changed_to.name());
+            }
         }
     }
 }

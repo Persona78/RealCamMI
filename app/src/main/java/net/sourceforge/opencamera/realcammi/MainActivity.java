@@ -1,5 +1,77 @@
 package net.sourceforge.opencamera.realcammi;
 
+import android.Manifest;
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
+import android.app.ActivityManager;
+import android.app.AlertDialog;
+import android.app.KeyguardManager;
+import android.content.ActivityNotFoundException;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.content.res.TypedArray;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.Insets;
+import android.graphics.Point;
+import android.graphics.PorterDuff;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.hardware.display.DisplayManager;
+import android.media.MediaMetadataRetriever;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.ParcelFileDescriptor;
+import android.provider.MediaStore;
+import android.speech.tts.TextToSpeech;
+import android.text.Html;
+import android.util.Log;
+import android.util.Size;
+import android.util.SizeF;
+import android.view.GestureDetector;
+import android.view.GestureDetector.SimpleOnGestureListener;
+import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MotionEvent;
+import android.view.OrientationEventListener;
+import android.view.Surface;
+import android.view.TextureView;
+import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.widget.ImageButton;
+import android.widget.SeekBar;
+import android.widget.SeekBar.OnSeekBarChangeListener;
+import android.widget.TextView;
+
+import androidx.activity.EdgeToEdge;
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.PreferenceManager;
+
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraController;
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraControllerManager;
 import net.sourceforge.opencamera.realcammi.cameracontroller.CameraControllerManager2;
@@ -27,80 +99,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
-import android.Manifest;
-import android.content.pm.PackageInfo;
-import android.content.res.TypedArray;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
-import android.graphics.Insets;
-import android.graphics.Point;
-import android.graphics.PorterDuff;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
-import android.hardware.display.DisplayManager;
-import android.media.MediaMetadataRetriever;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.CancellationSignal;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.ParcelFileDescriptor;
-import android.provider.MediaStore;
-import android.animation.ArgbEvaluator;
-import android.animation.ValueAnimator;
-import android.annotation.SuppressLint;
-import android.app.ActivityManager;
-import android.app.AlertDialog;
-import android.app.KeyguardManager;
-import android.content.ActivityNotFoundException;
-import android.content.Context;
-import android.content.DialogInterface;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
-import android.content.res.Configuration;
-import android.speech.tts.TextToSpeech;
-
-import androidx.activity.EdgeToEdge;
-import androidx.activity.OnBackPressedCallback;
-import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
-
-import android.text.Html;
-import android.util.Log;
-import android.util.Size;
-import android.util.SizeF;
-import android.view.GestureDetector;
-import android.view.GestureDetector.SimpleOnGestureListener;
-import android.view.KeyEvent;
-import android.view.Menu;
-import android.view.MotionEvent;
-import android.view.OrientationEventListener;
-import android.view.Surface;
-import android.view.TextureView;
-import android.view.View;
-import android.view.ViewConfiguration;
-import android.view.ViewGroup;
-import android.view.WindowInsets;
-import android.view.WindowManager;
-import android.view.animation.AccelerateDecelerateInterpolator;
-import android.widget.ImageButton;
-import android.widget.SeekBar;
-import android.widget.SeekBar.OnSeekBarChangeListener;
-import android.widget.TextView;
-
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.preference.PreferenceManager;
-import androidx.preference.PreferenceFragmentCompat;
 
 /** The main Activity for RealCamMI.
  */
@@ -186,6 +184,8 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
 
     private static final int CHOOSE_SAVE_FOLDER_SAF_CODE = 42;
     private static final int CHOOSE_GHOST_IMAGE_SAF_CODE = 43;
+    // [REALCAMMI FORK 2026-09-18] "Match Photo's Look" - see PhotoLookMatcher.java
+    private static final int CHOOSE_PHOTO_LOOK_IMAGE_CODE = 53;
     private static final int CHOOSE_LOAD_SETTINGS_SAF_CODE = 44;
 
     // for testing; must be volatile for test project reading the state
@@ -207,8 +207,8 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
     //private final int image_saving_notification_id = 1;
 
     private static final float WATER_DENSITY_FRESHWATER = 1.0f;
-    private static final float WATER_DENSITY_SALTWATER = 1.035f;
-    private float mWaterDensity = 1.0f;
+    private static final float WATER_DENSITY_SALTWATER = 1.025f; //default Open Camera 1.035f
+    private float mWaterDensity = WATER_DENSITY_FRESHWATER;
 
     // whether to lock to landscape orientation, or allow switching between portrait and landscape orientations
     //public static final boolean lock_to_landscape = true;
@@ -1319,6 +1319,11 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
         super.onResume();
         this.app_is_paused = false; // must be set before initLocation() at least
 
+        // [REALCAMMI FORK] Repairs PhotoMode if a previous Auto HDR/Night software fallback
+        // never completed its restore-to-Standard cycle (e.g. app was killed/backgrounded
+        // mid-flow) - see MyApplicationInterface.restorePhotoModeIfOrphanedFallback().
+        applicationInterface.restorePhotoModeIfOrphanedFallback();
+
         // this is intentionally true, not false, as the uncovering happens in DrawPreview when we receive frames from the camera after it's opened
         // (this should already have been set from the call in onPause(), but we set it here again just in case)
         applicationInterface.getDrawPreview().setCoverPreview(true);
@@ -1904,6 +1909,13 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
         if( MyDebug.LOG )
             Log.d(TAG, "clickedWhiteBalanceLock");
         this.mainUI.getOnScreenIcons().clickedWhiteBalanceLock();
+    }
+
+    // [REALCAMMI FORK 2026-08-31] Metering mode selector (Matrix/Center-weighted/Spot)
+    public void clickedMeteringMode(View view) {
+        if( MyDebug.LOG )
+            Log.d(TAG, "clickedMeteringMode");
+        this.mainUI.getOnScreenIcons().clickedMeteringMode();
     }
 
     public void clickedCycleRaw(View view) {
@@ -4457,6 +4469,27 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
         }
     }
 
+    /** Opens an image picker so the user can select a reference photo for "Match Photo's Look"
+     *  (see PhotoLookMatcher.java) - called from MyPreferenceFragment when the user taps the
+     *  "Match Photo's Look…" entry under More Camera Controls.
+     */
+    void launchPhotoLookMatcher() {
+        if( MyDebug.LOG )
+            Log.d(TAG, "launchPhotoLookMatcher");
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/*");
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true); // allow 1-3 reference photos, see PhotoLookMatcher.analyzeMultiple()
+        try {
+            startActivityForResult(intent, CHOOSE_PHOTO_LOOK_IMAGE_CODE);
+        }
+        catch(ActivityNotFoundException e) {
+            // see https://stackoverflow.com/questions/34021039/action-open-document-not-working-on-miui/34045627
+            preview.showToast(null, R.string.open_files_saf_exception_generic);
+            MyDebug.logStackTrace(TAG, "ActivityNotFoundException from startActivityForResult", e);
+        }
+    }
+
     /** Opens the Storage Access Framework dialog to select a file for loading settings.
      * @param from_preferences Whether called from the Preferences
      */
@@ -4611,6 +4644,75 @@ public class MainActivity extends AppCompatActivity implements PreferenceFragmen
                 if( !saf_dialog_from_preferences ) {
                     setWindowFlagsForCamera();
                     showPreview(true);
+                }
+                break;
+            case CHOOSE_PHOTO_LOOK_IMAGE_CODE:
+                if( resultCode == RESULT_OK && resultData != null ) {
+                    List<Uri> fileUris = new ArrayList<>();
+                    if( resultData.getClipData() != null ) {
+                        // multiple images selected (ACTION_OPEN_DOCUMENT + EXTRA_ALLOW_MULTIPLE)
+                        android.content.ClipData clipData = resultData.getClipData();
+                        int n_selected = clipData.getItemCount();
+                        for(int i=0;i<n_selected && i<3;i++) {
+                            fileUris.add(clipData.getItemAt(i).getUri());
+                        }
+                        if( n_selected > 3 ) {
+                            // more than 3 selected: silently use the first 3, but tell the user
+                            preview.showToast(null, getResources().getString(R.string.preference_match_photo_look_too_many, n_selected));
+                        }
+                    }
+                    else if( resultData.getData() != null ) {
+                        // single image selected (unchanged behaviour)
+                        fileUris.add(resultData.getData());
+                    }
+
+                    if( MyDebug.LOG )
+                        Log.d(TAG, "photo look reference image uris: " + fileUris);
+
+                    if( !fileUris.isEmpty() ) {
+                        List<Bitmap> look_bitmaps = new ArrayList<>();
+                        for(Uri fileUri : fileUris) {
+                            try {
+                                // Downsample the decode - this can be a full-resolution gallery photo,
+                                // and PhotoLookMatcher only needs a sparse sample grid, not full
+                                // resolution. inSampleSize=4 (each dimension quartered, 1/16 the
+                                // pixels) keeps this fast and memory-safe for any reasonably-sized
+                                // photo, while still being far more detail than the ~400-point sample
+                                // grid PhotoLookMatcher.analyze() actually reads.
+                                BitmapFactory.Options options = new BitmapFactory.Options();
+                                options.inSampleSize = 4;
+                                try( InputStream input_stream = getContentResolver().openInputStream(fileUri) ) {
+                                    Bitmap bitmap = BitmapFactory.decodeStream(input_stream, null, options);
+                                    if( bitmap != null )
+                                        look_bitmaps.add(bitmap);
+                                }
+                            }
+                            catch(Exception e) {
+                                MyDebug.logStackTrace(TAG, "failed to decode photo look reference image", e);
+                            }
+                        }
+
+                        if( !look_bitmaps.isEmpty() ) {
+                            PhotoLookMatcher.SuggestedLook suggested = PhotoLookMatcher.analyzeMultiple(look_bitmaps);
+                            for(Bitmap bitmap : look_bitmaps) {
+                                bitmap.recycle();
+                            }
+
+                            SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+                            SharedPreferences.Editor editor = sharedPreferences.edit();
+                            editor.putString(PreferenceKeys.ColorBoostRedScalePreferenceKey, String.format(Locale.US, "%.3f", suggested.red_scale));
+                            editor.putString(PreferenceKeys.ColorBoostGreenScalePreferenceKey, String.format(Locale.US, "%.3f", suggested.green_scale));
+                            editor.putString(PreferenceKeys.ColorBoostBlueScalePreferenceKey, String.format(Locale.US, "%.3f", suggested.blue_scale));
+                            editor.putString(PreferenceKeys.ColorBoostSaturationPreferenceKey, String.format(Locale.US, "%.3f", suggested.saturation));
+                            editor.apply();
+
+                            preview.showToast(null, getResources().getString(R.string.preference_match_photo_look_applied,
+                                    suggested.red_scale, suggested.green_scale, suggested.blue_scale, suggested.saturation));
+                        }
+                        else {
+                            preview.showToast(null, R.string.preference_match_photo_look_failed);
+                        }
+                    }
                 }
                 break;
             case CHOOSE_LOAD_SETTINGS_SAF_CODE:

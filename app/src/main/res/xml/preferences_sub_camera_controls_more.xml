@@ -142,7 +142,7 @@
         android:key="preference_save_include_milliseconds"
         android:title="@string/preference_save_include_milliseconds"
         android:summary="@string/preference_save_include_milliseconds_summary"
-        android:defaultValue="false"
+        android:defaultValue="true"
         />
 
     <SwitchPreference
@@ -177,6 +177,88 @@
         android:key="preference_calibrate_level"
         android:title="@string/preference_calibrate_level"
         android:summary="@string/preference_calibrate_level_summary"
+        />
+
+    <!-- [REALCAMMI FORK 2026-08-31] Extra EV compensation (GCam-style numeric entry, not a slider) -->
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_extra_exposure_compensation"
+        android:title="@string/preference_extra_exposure_compensation"
+        android:summary="@string/preference_extra_exposure_compensation_summary"
+        android:dialogMessage="@string/preference_extra_exposure_compensation_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="0"
+        />
+
+    <!-- [REALCAMMI FORK 2026-09-18] "Match Photo's Look" - picks a reference photo from the
+         gallery, analyses its average colour balance/saturation, and writes suggested values
+         into the Color Boost fields below. See PhotoLookMatcher.java. Plain clickable Preference
+         (no stored value of its own) - the click is intercepted in MyPreferenceFragment.java. -->
+    <Preference
+        android:key="preference_match_photo_look"
+        android:title="@string/preference_match_photo_look"
+        android:summary="@string/preference_match_photo_look_summary"
+        />
+
+    <!-- [REALCAMMI FORK 2026-08-31] Color boost fields (GCam-style numeric entries, not sliders) -->
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_color_boost_red_scale"
+        android:title="@string/preference_color_boost_red_scale"
+        android:summary="@string/preference_color_boost_red_scale_summary"
+        android:dialogMessage="@string/preference_color_boost_red_scale_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="0.000"
+        />
+
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_color_boost_green_scale"
+        android:title="@string/preference_color_boost_green_scale"
+        android:summary="@string/preference_color_boost_green_scale_summary"
+        android:dialogMessage="@string/preference_color_boost_green_scale_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="0.000"
+        />
+
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_color_boost_blue_scale"
+        android:title="@string/preference_color_boost_blue_scale"
+        android:summary="@string/preference_color_boost_blue_scale_summary"
+        android:dialogMessage="@string/preference_color_boost_blue_scale_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="0.000"
+        />
+
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_color_boost_offset"
+        android:title="@string/preference_color_boost_offset"
+        android:summary="@string/preference_color_boost_offset_summary"
+        android:dialogMessage="@string/preference_color_boost_offset_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="0.000"
+        />
+
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_color_boost_saturation"
+        android:title="@string/preference_color_boost_saturation"
+        android:summary="@string/preference_color_boost_saturation_summary"
+        android:dialogMessage="@string/preference_color_boost_saturation_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="1.000"
+        />
+
+    <!-- if the default value changes, remember to update code in MyPreferenceFragment.setSummary() -->
+    <net.sourceforge.opencamera.realcammi.ui.MyEditTextPreference
+        android:key="preference_color_boost_hue"
+        android:title="@string/preference_color_boost_hue"
+        android:summary="@string/preference_color_boost_hue_summary"
+        android:dialogMessage="@string/preference_color_boost_hue_summary"
+        android:inputType="numberSigned|numberDecimal"
+        android:defaultValue="0.000"
         />
 
     <PreferenceCategory

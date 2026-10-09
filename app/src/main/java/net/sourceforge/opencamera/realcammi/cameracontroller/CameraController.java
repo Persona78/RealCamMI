@@ -1,5 +1,14 @@
 package net.sourceforge.opencamera.realcammi.cameracontroller;
 
+import android.graphics.Rect;
+import android.location.Location;
+import android.media.MediaRecorder;
+import android.util.Log;
+import android.view.SurfaceHolder;
+import android.view.TextureView;
+
+import androidx.annotation.NonNull;
+
 import net.sourceforge.opencamera.realcammi.MyDebug;
 import net.sourceforge.opencamera.realcammi.SceneDetector;
 
@@ -11,15 +20,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import android.graphics.Rect;
-import android.location.Location;
-import android.media.MediaRecorder;
-import android.util.Log;
-import android.view.SurfaceHolder;
-import android.view.TextureView;
-
-import androidx.annotation.NonNull;
 
 /** CameraController is an abstract class that wraps up the access/control to
  *  the Android camera, so that the rest of the application doesn't have to
@@ -42,10 +42,22 @@ public abstract class CameraController {
     public static final String EDGE_MODE_DEFAULT = "default";
     public static final String NOISE_REDUCTION_MODE_DEFAULT = "default";
     public static final String ISO_DEFAULT = "auto";
-    public static final long EXPOSURE_TIME_DEFAULT = 1000000000L/30; // note, responsibility of callers to check that this is within the valid min/max range
+    public static final long EXPOSURE_TIME_DEFAULT = 1000000000L/30;
 
-    // default RealCamMI is 5, set 10 to for test
+    // [REALCAMMI FIX 2026-09-18] This and N_IMAGES_NR_DARK_LOW_LIGHT below were swapped: this
+    // constant (the "Normal" NR tier, not Low Light) had the value 15, while the comment on
+    // N_IMAGES_NR_DARK_LOW_LIGHT below - quoting the official Open Camera blog - explicitly says
+    // the Low Light tier is the one that should use more (15) images. Confirmed against the
+    // source (sourceforge.net/p/opencamera/blog/2018/09/noise-reduction-photo-mode/, and
+    // opencamera.sourceforge.io/help.html, which describes plain/"Normal" NR mode as "a burst of
+    // up to 8 photos"). "increased from 5 to 15" below was presumably a real, deliberate tuning
+    // change at some point, but landed on the wrong constant. Swapped so each tier's value now
+    // matches what its own name and comment already say it should be.
+    // [REALCAMMI FIX 2026-10-07] Note: upstream's "Normal" tier is 8 photos; this fork deliberately
+    // uses 10 (hand-tuned), so the "up to 8 photos" wording above describes upstream, not this value.
     public static final int N_IMAGES_NR_DARK = 10;
+
+    // Blog oficial do Open Camera - There is now a 'Low Light' mode (when in NR photo mode) which in low light will use longer exposures and more (15) images.
     public static final int N_IMAGES_NR_DARK_LOW_LIGHT = 15;
 
     // to test:
@@ -63,7 +75,7 @@ public abstract class CameraController {
     public volatile int test_texture_view_buffer_h;
     public volatile boolean test_force_run_post_capture; // for Camera2 API, test using adjustPreview() / RequestTagType.RUN_POST_CAPTURE
     public static volatile boolean test_force_slow_preview_start; // for Camera2 API, test waiting for test_force_slow_preview_start_ms when starting preview
-    protected static final long test_force_slow_preview_start_ms = 6000L;
+    protected static final long test_force_slow_preview_start_ms = 0L;
 
     /** Class for caching a subset of CameraFeatures, that are slow to read.
      *  For now only used for vendor extensions which are slow to read.
@@ -690,6 +702,21 @@ public abstract class CameraController {
     public abstract List<CameraController.Area> getMeteringAreas();
     public abstract boolean supportsAutoFocus();
     public abstract boolean supportsMetering();
+    /** [REALCAMMI FORK 2026-08-31] Huawei Pro-mode-inspired metering mode selector (Matrix /
+     *  Center-weighted / Spot), simulated via the size of the default AE metering region rather
+     *  than a distinct hardware mode - Camera2 has no native "metering mode" concept. This only
+     *  controls the DEFAULT AE region used when the user hasn't tapped to set their own metering
+     *  point; an active tap-to-meter area always takes priority over this setting. The chosen mode
+     *  is persisted (PreferenceKeys.MeteringModePreferenceKey) so it survives app restarts and is
+     *  captured by Save/Restore Settings like any other preference.
+     */
+    public enum MeteringMode {
+        METERING_MODE_MATRIX,          // no default AE region (full frame), matches pre-existing behaviour
+        METERING_MODE_CENTER_WEIGHTED, // default AE region covers the central ~50% of the frame
+        METERING_MODE_SPOT             // default AE region covers the central ~8% of the frame
+    }
+    public abstract void setMeteringMode(MeteringMode metering_mode);
+    public abstract MeteringMode getMeteringMode();
     public abstract boolean focusIsContinuous();
     public abstract boolean focusIsVideo();
     /** Reconnect to the camera after recording video is completed.
